@@ -3,6 +3,8 @@ use core::str;
 use std::fs::File;
 use std::io::prelude::*;
 
+use std::convert::TryInto; // for converting from slice to an array
+
 #[derive(Debug, Clone)]
 enum PageType {
     LEAFINDEX,
@@ -11,6 +13,24 @@ enum PageType {
     INTERIORTABLE,
     UNKNOWNTYPE,
 }
+
+
+#[derive(Debug, Copy, Clone)]
+enum RecordFieldType {
+    Null,
+    I8,
+    I16,
+    I24,
+    I32,
+    I48,
+    I64,
+    Float,
+    Zero,
+    One,
+    STRING(usize),
+    BLOB(usize),
+}
+
 
 // return 2 bytes = u16 1 byte = u8
 
@@ -40,12 +60,49 @@ impl DatabaseHeader {
         self.page_size
     }
 }
+
+struct Table {
+    rows: Vec<Box<Row>>,
+}
+
+#[derive(Debug, Clone,Default)]
+struct RecordHeader {
+    payload:Vec<u8>,
+    record_size_value: (u8,u8),
+    record_type_value:(u8,u8),
+    record_name_value:(u8,u8),
+    record_table_name_value:(u8,u8),
+}
+
+impl RecordHeader {
+    fn new(payload:&[u8]) -> Self {
+        Self{
+            payload:vec![],
+            ..Default::default()
+        }
+    }
+
+    
+}
+
+#[derive(Debug, Clone)]
+struct Row {
+    offset: u16,
+    payload_size: u8,
+    row_id: u16,
+    payload: String,
+}
+
 #[derive(Debug, Clone)]
 struct Page {
     type_page: PageType,
     table_count: u16,       // two bytes
     cell_content_area: u16, // two bytes
+    cells: Vec<Box<Option<Row>>>,
 }
+
+
+
 
 impl Page {
     fn new(database_page: &[u8]) -> Self {
@@ -53,6 +110,7 @@ impl Page {
             type_page: Page::get_page_type(database_page[0]),
             table_count: u16::from_be_bytes([database_page[3], database_page[4]]),
             cell_content_area: u16::from_be_bytes([database_page[5], database_page[6]]),
+            cells: vec![Box::new(None)],
         }
     }
     fn get_page_type(byte: u8) -> PageType {
@@ -65,8 +123,99 @@ impl Page {
         }
     }
 
+    fn fill_cell_vec(&mut self, file: &mut File) -> () {
+        let schema_header_offeset = 8;
+        let mut init_offset = OFFSET + schema_header_offeset;
+        let res = file.seek(std::io::SeekFrom::Start(init_offset as u64));
+        match res {
+            Ok(res) => {
+                let mut i = 1;
+                let step = 2;
+
+                while i <= self.table_count {
+                    // iterate throught the cells of the schema table
+                    let mut buffer: [u8; 2] = [0; 2];
+                    let offset_value = file.read_exact(&mut buffer);
+
+                    let row_offset = u16::from_be_bytes([buffer[0], buffer[1]]);
+
+                    println!("THOSE ARE THE OFFESETS: {}", row_offset);
+
+                    self.print_cell_values(file, row_offset, init_offset as u16);
+                    //seek to the row data using the the current
+                    //let offse_row_data = file.seek_relative(offset)
+                    init_offset = init_offset + step;
+
+                    if let Ok(new_pos_cursor) =
+                        file.seek(std::io::SeekFrom::Start(init_offset as u64))
+                    {
+                        println!("NEXT STEP {}", new_pos_cursor);
+                    }
+                    i += 1;
+                }
+            }
+            Err(x) => {
+                println!("SOMTHING WENT WRONG!! {}", x)
+            }
+        }
+    }
+
     fn get_table_count(self) -> u16 {
         self.table_count
+    }
+
+
+    fn parse_record_header(serialType:u16) -> (RecordFieldType,usize) {
+        let (field_type, field_size) = match serialType {
+            0 => (RecordFieldType::Null, 0),
+            1 => (RecordFieldType::I8, 1),
+            2 => (RecordFieldType::I16, 2),
+            3 => (RecordFieldType::I24, 3),
+            4 => (RecordFieldType::I32, 4),
+            5 => (RecordFieldType::I48, 6),
+            6 => (RecordFieldType::I64, 8),
+            7 => (RecordFieldType::Float, 8),
+            8 => (RecordFieldType::Zero, 0),
+            9 => (RecordFieldType::One, 0),
+            n if n >= 12 && n % 2 == 0 => {
+                let size = ((n - 12) / 2) as usize;
+                (RecordFieldType::BLOB(size), size)
+            }
+            n if n >= 13 && n % 2 == 1 => {
+                let size = ((n - 13) / 2) as usize;
+                (RecordFieldType::STRING(size), size)
+            }
+            _ => panic!("NOT SUPORTED TYPE")
+        };
+    
+        (field_type,field_size)
+    }
+
+
+    fn print_cell_values(&mut self,file: &mut File,cell_offset:u16,prev_offset:u16) {
+        let _ = file.seek(std::io::SeekFrom::Start(cell_offset as u64));
+
+        let mut payload_size_buff = [0;1];
+        let _ = file.read_exact(&mut payload_size_buff);
+        let payload_size_value = u8::from_be_bytes(payload_size_buff);
+
+
+        let mut rowid_buff = [0;1];
+        let _ = file.seek(std::io::SeekFrom::Start((cell_offset as u64)+1));
+        let _ = file.read_exact(&mut rowid_buff);
+        let row_id_value = u8::from_be_bytes(rowid_buff);
+        
+        let mut payload_buff = vec![0;payload_size_value as usize] ;
+        let new_pos = file.seek(std::io::SeekFrom::Start((cell_offset as u64)+2)).expect("SEEK FAILED");
+        let _ = file.read_exact(&mut payload_buff);
+        let payload = String::from_utf8_lossy(&payload_buff[..]);
+        println!("BUFFER CONTENT: {:x?}  LENGTH: {:?}  NEW POS SEEK: {:?}",payload_buff,payload_buff.len(),payload);
+        println!("SIZE: {}, ID: {}, ",payload_size_value,row_id_value);
+        file.seek(std::io::SeekFrom::Start(prev_offset as u64));
+
+
+
+
     }
 }
 
@@ -100,8 +249,26 @@ fn main() -> Result<()> {
                 Page::new(&header[OFFSET..OFFSET + 8]).get_table_count()
             );
         }
+        ".tables" => {
+            let mut file = File::open(&args[1])?;
+
+            let mut buffer = [0; 8];
+
+            file.seek(std::io::SeekFrom::Start(OFFSET as u64))
+                .expect("SOMTHING WENT WRONG W8HILE SEEKING");
+
+            let _ = file
+                .read_exact(&mut buffer)
+                .expect("SOMTHING WENT WRONG WHILE FILLING THE BUFFER");
+            let mut schema_page = Page::new(&buffer);
+
+            schema_page.fill_cell_vec(&mut file);
+            println!("number of tables: {}", schema_page.get_table_count());
+        }
         _ => bail!("Missing or invalid command passed: {}", command),
     }
-
     Ok(())
 }
+
+
+// https://blog.sylver.dev/build-your-own-sqlite-part-1-listing-tables?source=more_series_bottom_blogs
