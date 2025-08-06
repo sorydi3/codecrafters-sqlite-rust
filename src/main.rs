@@ -68,21 +68,74 @@ struct Table {
 #[derive(Debug, Clone,Default)]
 struct RecordHeader {
     payload:Vec<u8>,
-    record_size_value: (u8,u8),
-    record_type_value:(u8,u8),
-    record_name_value:(u8,u8),
-    record_table_name_value:(u8,u8),
+    record_size_value: (u8,u8),//(size,value)
+    record_type_value:(u8,String),
+    record_name_value:(u8,String),
+    record_table_name_value:(u8,String),
 }
 
 impl RecordHeader {
+
+    const  OFFESET_VALUE:u8 = 7;
     fn new(payload:&[u8]) -> Self {
         Self{
-            payload:vec![],
+            payload:payload.to_vec(),
             ..Default::default()
         }
     }
 
+
+    fn set_values(&mut self,file: &mut File) -> &mut Self {
+        println!("Size r.header: ({},{}) type r.type: ({},{})",self.payload[0],0,self.parse_record_header(self.payload[1]).1,0);
+        // set the size of each column
+        self.record_type_value.0 = self.parse_record_header(self.payload[1]).1 as u8;
+        self.record_name_value.0 = self.parse_record_header(self.payload[2]).1 as u8;
+        self.record_table_name_value.0 = self.parse_record_header(self.payload[3]).1 as u8;
+        // set the value of each column
+
+        self.record_type_value.1 = self.read_bytes(&mut vec![0,self.record_type_value.0][..], OFFSET as u8, file);
+        let mut new_offset: usize = OFFSET + self.record_type_value.0 as usize;
+        self.record_name_value.1 = self.read_bytes(&mut vec![0,self.record_name_value.0][..], new_offset as u8, file);
+        new_offset = new_offset + self.record_name_value.0 as usize;
+        self.record_table_name_value.1 = self.read_bytes(&mut vec![0,self.record_table_name_value.0][..], new_offset as u8, file);
+        self
+    }
+
+
+    fn read_bytes(&self,buff:&mut [u8],offset:u8,file: &mut File) -> String {
+        let _ = file.seek(std::io::SeekFrom::Start(offset as u64));
+        let _ = file.read_exact(buff);
+        String::from_utf8_lossy(buff).to_string()
+    }
+
+
+    fn parse_record_header(&self,serialType:u8) -> (RecordFieldType,usize) {
+        let (field_type, field_size) = match serialType {
+            0 => (RecordFieldType::Null, 0),
+            1 => (RecordFieldType::I8, 1),
+            2 => (RecordFieldType::I16, 2),
+            3 => (RecordFieldType::I24, 3),
+            4 => (RecordFieldType::I32, 4),
+            5 => (RecordFieldType::I48, 6),
+            6 => (RecordFieldType::I64, 8),
+            7 => (RecordFieldType::Float, 8),
+            8 => (RecordFieldType::Zero, 0),
+            9 => (RecordFieldType::One, 0),
+            n if n >= 12 && n % 2 == 0 => {
+                let size = ((n - 12) / 2) as usize;
+                (RecordFieldType::BLOB(size), size)
+            }
+            n if n >= 13 && n % 2 == 1 => {
+                let size = ((n - 13) / 2) as usize;
+                (RecordFieldType::STRING(size), size)
+            }
+            _ => panic!("NOT SUPORTED TYPE")
+        };
     
+        (field_type,field_size)
+    }
+
+
 }
 
 #[derive(Debug, Clone)]
@@ -165,31 +218,7 @@ impl Page {
     }
 
 
-    fn parse_record_header(serialType:u16) -> (RecordFieldType,usize) {
-        let (field_type, field_size) = match serialType {
-            0 => (RecordFieldType::Null, 0),
-            1 => (RecordFieldType::I8, 1),
-            2 => (RecordFieldType::I16, 2),
-            3 => (RecordFieldType::I24, 3),
-            4 => (RecordFieldType::I32, 4),
-            5 => (RecordFieldType::I48, 6),
-            6 => (RecordFieldType::I64, 8),
-            7 => (RecordFieldType::Float, 8),
-            8 => (RecordFieldType::Zero, 0),
-            9 => (RecordFieldType::One, 0),
-            n if n >= 12 && n % 2 == 0 => {
-                let size = ((n - 12) / 2) as usize;
-                (RecordFieldType::BLOB(size), size)
-            }
-            n if n >= 13 && n % 2 == 1 => {
-                let size = ((n - 13) / 2) as usize;
-                (RecordFieldType::STRING(size), size)
-            }
-            _ => panic!("NOT SUPORTED TYPE")
-        };
     
-        (field_type,field_size)
-    }
 
 
     fn print_cell_values(&mut self,file: &mut File,cell_offset:u16,prev_offset:u16) {
@@ -214,6 +243,9 @@ impl Page {
         file.seek(std::io::SeekFrom::Start(prev_offset as u64));
 
 
+        let record = RecordHeader::new(&payload_buff[..]);
+
+        println!("RECORD: {:?}",record);
 
 
     }
