@@ -14,7 +14,6 @@ enum PageType {
     UNKNOWNTYPE,
 }
 
-
 #[derive(Debug, Copy, Clone)]
 enum RecordFieldType {
     Null,
@@ -30,7 +29,6 @@ enum RecordFieldType {
     STRING(usize),
     BLOB(usize),
 }
-
 
 // return 2 bytes = u16 1 byte = u8
 
@@ -65,51 +63,62 @@ struct Table {
     rows: Vec<Box<Row>>,
 }
 
-#[derive(Debug, Clone,Default)]
+#[derive(Debug, Clone, Default)]
 struct RecordHeader {
-    payload:Vec<u8>,
-    record_size_value: (u8,u8),//(size,value)
-    record_type_value:(u8,String),
-    record_name_value:(u8,String),
-    record_table_name_value:(u8,String),
+    payload: Vec<u8>,
+    record_size_value: (u8, u8), //(size,value)
+    record_type_value: (u8, String),
+    record_name_value: (u8, String),
+    record_table_name_value: (u8, String),
 }
 
 impl RecordHeader {
-
-    const  OFFESET_VALUE:u8 = 7;
-    fn new(payload:&[u8]) -> Self {
-        Self{
-            payload:payload.to_vec(),
+    const OFFESET_VALUE: u8 = 9;
+    fn new(payload: &[u8]) -> Self {
+        Self {
+            payload: payload.to_vec(),
             ..Default::default()
         }
     }
 
-
-    fn set_values(&mut self,file: &mut File) -> &mut Self {
-        println!("Size r.header: ({},{}) type r.type: ({},{})",self.payload[0],0,self.parse_record_header(self.payload[1]).1,0);
+    fn set_values(&mut self, file: &mut File, cell_offset: usize) -> &mut Self {
+        //self.parse_record_header(self.payload[4]).1
         // set the size of each column
         self.record_type_value.0 = self.parse_record_header(self.payload[1]).1 as u8;
         self.record_name_value.0 = self.parse_record_header(self.payload[2]).1 as u8;
         self.record_table_name_value.0 = self.parse_record_header(self.payload[3]).1 as u8;
         // set the value of each column
+        self.record_type_value.1 = self.read_bytes(
+            &mut vec![0; self.record_type_value.0 as usize],
+            cell_offset + RecordHeader::OFFESET_VALUE as usize,
+            file,
+        );
 
-        self.record_type_value.1 = self.read_bytes(&mut vec![0,self.record_type_value.0][..], OFFSET as u8, file);
-        let mut new_offset: usize = OFFSET + self.record_type_value.0 as usize;
-        self.record_name_value.1 = self.read_bytes(&mut vec![0,self.record_name_value.0][..], new_offset as u8, file);
+        let mut new_offset: usize = cell_offset as usize
+            + RecordHeader::OFFESET_VALUE as usize
+            + self.record_type_value.0 as usize;
+        self.record_name_value.1 = self.read_bytes(
+            &mut vec![0; self.record_name_value.0 as usize],
+            new_offset,
+            file,
+        );
         new_offset = new_offset + self.record_name_value.0 as usize;
-        self.record_table_name_value.1 = self.read_bytes(&mut vec![0,self.record_table_name_value.0][..], new_offset as u8, file);
+        self.record_table_name_value.1 = self.read_bytes(
+            &mut vec![0; self.record_table_name_value.0 as usize],
+            new_offset,
+            file,
+        );
+
         self
     }
 
-
-    fn read_bytes(&self,buff:&mut [u8],offset:u8,file: &mut File) -> String {
+    fn read_bytes(&self, buff: &mut [u8], offset: usize, file: &mut File) -> String {
         let _ = file.seek(std::io::SeekFrom::Start(offset as u64));
         let _ = file.read_exact(buff);
         String::from_utf8_lossy(buff).to_string()
     }
 
-
-    fn parse_record_header(&self,serialType:u8) -> (RecordFieldType,usize) {
+    fn parse_record_header(&self, serialType: u8) -> (RecordFieldType, usize) {
         let (field_type, field_size) = match serialType {
             0 => (RecordFieldType::Null, 0),
             1 => (RecordFieldType::I8, 1),
@@ -129,13 +138,11 @@ impl RecordHeader {
                 let size = ((n - 13) / 2) as usize;
                 (RecordFieldType::STRING(size), size)
             }
-            _ => panic!("NOT SUPORTED TYPE")
+            _ => panic!("NOT SUPORTED TYPE"),
         };
-    
-        (field_type,field_size)
+
+        (field_type, field_size)
     }
-
-
 }
 
 #[derive(Debug, Clone)]
@@ -151,11 +158,8 @@ struct Page {
     type_page: PageType,
     table_count: u16,       // two bytes
     cell_content_area: u16, // two bytes
-    cells: Vec<Box<Option<Row>>>,
+    cells: Vec<Box<Option<RecordHeader>>>,
 }
-
-
-
 
 impl Page {
     fn new(database_page: &[u8]) -> Self {
@@ -192,7 +196,6 @@ impl Page {
 
                     let row_offset = u16::from_be_bytes([buffer[0], buffer[1]]);
 
-                    println!("THOSE ARE THE OFFESETS: {}", row_offset);
 
                     self.print_cell_values(file, row_offset, init_offset as u16);
                     //seek to the row data using the the current
@@ -202,7 +205,7 @@ impl Page {
                     if let Ok(new_pos_cursor) =
                         file.seek(std::io::SeekFrom::Start(init_offset as u64))
                     {
-                        println!("NEXT STEP {}", new_pos_cursor);
+                        ();
                     }
                     i += 1;
                 }
@@ -213,41 +216,43 @@ impl Page {
         }
     }
 
-    fn get_table_count(self) -> u16 {
+
+    fn display_cells(&self) -> () {
+        let res = self.cells.iter().filter(|c| {
+            let v = &mut c.clone().clone();
+            let val = v.take().unwrap().record_name_value.1;
+            "qlite_sequences".to_string() != val  
+        }).collect::<Vec<_>>();
+    }
+
+    fn get_table_count(&self) -> u16 {
         self.table_count
     }
 
-
-    
-
-
-    fn print_cell_values(&mut self,file: &mut File,cell_offset:u16,prev_offset:u16) {
+    fn print_cell_values(&mut self, file: &mut File, cell_offset: u16, prev_offset: u16) {
         let _ = file.seek(std::io::SeekFrom::Start(cell_offset as u64));
 
-        let mut payload_size_buff = [0;1];
+        let mut payload_size_buff = [0; 1];
         let _ = file.read_exact(&mut payload_size_buff);
         let payload_size_value = u8::from_be_bytes(payload_size_buff);
 
-
-        let mut rowid_buff = [0;1];
-        let _ = file.seek(std::io::SeekFrom::Start((cell_offset as u64)+1));
+        let mut rowid_buff = [0; 1];
+        let _ = file.seek(std::io::SeekFrom::Start((cell_offset as u64) + 1));
         let _ = file.read_exact(&mut rowid_buff);
         let row_id_value = u8::from_be_bytes(rowid_buff);
-        
-        let mut payload_buff = vec![0;payload_size_value as usize] ;
-        let new_pos = file.seek(std::io::SeekFrom::Start((cell_offset as u64)+2)).expect("SEEK FAILED");
+
+        let mut payload_buff = vec![0; payload_size_value as usize];
+        let new_pos = file
+            .seek(std::io::SeekFrom::Start((cell_offset as u64) + 2))
+            .expect("SEEK FAILED");
         let _ = file.read_exact(&mut payload_buff);
         let payload = String::from_utf8_lossy(&payload_buff[..]);
-        println!("BUFFER CONTENT: {:x?}  LENGTH: {:?}  NEW POS SEEK: {:?}",payload_buff,payload_buff.len(),payload);
-        println!("SIZE: {}, ID: {}, ",payload_size_value,row_id_value);
         file.seek(std::io::SeekFrom::Start(prev_offset as u64));
 
-
-        let record = RecordHeader::new(&payload_buff[..]);
-
-        println!("RECORD: {:?}",record);
-
-
+        let mut record = RecordHeader::new(&payload_buff[..]);
+        record.set_values(file, cell_offset as usize);
+        println!("{:?}",record.record_name_value.1);
+        self.cells.push(Box::new(Some(record)));
     }
 }
 
@@ -295,12 +300,14 @@ fn main() -> Result<()> {
             let mut schema_page = Page::new(&buffer);
 
             schema_page.fill_cell_vec(&mut file);
+            
             println!("number of tables: {}", schema_page.get_table_count());
+            println!("TABLES NAMES: {:?}", schema_page.display_cells());
+
         }
         _ => bail!("Missing or invalid command passed: {}", command),
     }
     Ok(())
 }
-
 
 // https://blog.sylver.dev/build-your-own-sqlite-part-1-listing-tables?source=more_series_bottom_blogs
