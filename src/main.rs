@@ -14,8 +14,9 @@ enum PageType {
     UNKNOWNTYPE,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone,Default)]
 enum RecordFieldType {
+    #[default]
     Null,
     I8,
     I16,
@@ -67,9 +68,9 @@ struct Table {
 struct RecordHeader {
     payload: Vec<u8>,
     record_size_value: (u8, u8), //(size,value)
-    record_type_value: (u8, String),
-    record_name_value: (u8, String),
-    record_table_name_value: (u8, String),
+    record_type_value: ((RecordFieldType, usize), String),
+    record_name_value: ((RecordFieldType, usize), String),
+    record_table_name_value: ((RecordFieldType, usize), String),
 }
 
 impl RecordHeader {
@@ -86,27 +87,27 @@ impl RecordHeader {
 
         println!("PAYLOAD: {:?}",String::from_utf8_lossy(&self.payload).to_string());
         // set the size of each column
-        self.record_type_value.0 = self.parse_record_header(self.payload[1]).1 as u8;
-        self.record_name_value.0 = self.parse_record_header(self.payload[2]).1 as u8;
-        self.record_table_name_value.0 = self.parse_record_header(self.payload[3]).1 as u8;
+        self.record_type_value.0 = self.parse_record_header(self.payload[1]);
+        self.record_name_value.0 = self.parse_record_header(self.payload[2]);
+        self.record_table_name_value.0 = self.parse_record_header(self.payload[3]);
         // set the value of each column
         self.record_type_value.1 = self.read_bytes(
-            &mut vec![0; self.record_type_value.0 as usize],
+            &mut vec![0; self.record_type_value.0.1],
             cell_offset + RecordHeader::OFFESET_VALUE as usize,
             file,
         );
 
         let mut new_offset: usize = cell_offset as usize
             + RecordHeader::OFFESET_VALUE as usize
-            + self.record_type_value.0 as usize;
+            + self.record_type_value.0.1;
         self.record_name_value.1 = self.read_bytes(
-            &mut vec![0; self.record_name_value.0 as usize],
+            &mut vec![0; self.record_name_value.0.1],
             new_offset,
             file,
         );
-        new_offset = new_offset + self.record_name_value.0 as usize;
+        new_offset = new_offset + self.record_name_value.0.1;
         self.record_table_name_value.1 = self.read_bytes(
-            &mut vec![0; self.record_table_name_value.0 as usize],
+            &mut vec![0; self.record_table_name_value.0.1],
             new_offset,
             file,
         );
@@ -226,14 +227,14 @@ impl Page {
                 let value = (***c).clone();
 
                 match value {
-                    Some(res) => res.record_name_value.1 != "qlite_sequences".to_string(),
+                    Some(res) => res.record_table_name_value.1 != "qlite_sequences".to_string(),
                     _ => false,
                 }
             }).map(|v| {
                 let value = (**v).clone();
                 match value {
                     Some(res) => {
-                        let val = &res.record_name_value.1;
+                        let val = &res.record_table_name_value.1;
                         println!("{:?}",&res);
                         val.clone()
                     },
