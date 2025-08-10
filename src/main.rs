@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
 use core::str;
+use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -245,7 +246,7 @@ impl Page {
         self.table_count
     }
 
-    fn print_cell_values(&mut self, file: &mut File, cell_offset: u16, prev_offset: u16) {
+    fn print_cell_values(&mut self, file: &mut File, cell_offset: u16, prev_offset: u16) -> Result<(),anyhow::Error> {
         let _ = file.seek(std::io::SeekFrom::Start(cell_offset as u64));
 
         let mut payload_size_buff = [0; 1];
@@ -253,7 +254,7 @@ impl Page {
         let payload_size_value = u8::from_be_bytes(payload_size_buff);
 
         let mut rowid_buff = [0; 1];
-        let _ = file.seek(std::io::SeekFrom::Start((cell_offset as u64) + 1));
+        let _ = file.seek(std::io::SeekFrom::Start((cell_offset as u64) + 1))?;
         let _ = file.read_exact(&mut rowid_buff);
         let row_id_value = u8::from_be_bytes(rowid_buff);
 
@@ -263,13 +264,14 @@ impl Page {
             .expect("SEEK FAILED");
         let _ = file.read_exact(&mut payload_buff);
         let payload = String::from_utf8_lossy(&payload_buff[..]);
-        file.seek(std::io::SeekFrom::Start(prev_offset as u64));
+        file.seek(std::io::SeekFrom::Start(prev_offset as u64))?;
 
         let mut record = RecordHeader::new(&payload_buff[..]);
         record.set_values(file, cell_offset as usize);
         //println!("{:?}", record.record_name_value.1);
         self.cells.push(Box::new(Some(record)));
-        file.seek(std::io::SeekFrom::Start(0));
+        Ok(())
+        
     }
 }
 
