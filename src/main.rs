@@ -269,6 +269,7 @@ impl Page {
         record.set_values(file, cell_offset as usize);
         //println!("{:?}", record.record_name_value.1);
         self.cells.push(Box::new(Some(record)));
+        file.seek(std::io::SeekFrom::Start(0));
     }
 }
 
