@@ -74,7 +74,7 @@ struct RecordHeader {
 }
 
 impl RecordHeader {
-    const OFFESET_VALUE: u8 = 9;
+    const OFFESET_VALUE: u8 = 7;
     fn new(payload: &[u8]) -> Self {
         Self {
             payload: payload.to_vec(),
@@ -84,7 +84,7 @@ impl RecordHeader {
 
     fn set_values(&mut self, file: &mut File, cell_offset: usize) -> &mut Self {
         //self.parse_record_header(self.payload[4]).1
-
+        println!("PAYLOAD: {:x?}",&self.payload);
         println!("PAYLOAD: {:?}",String::from_utf8_lossy(&self.payload).to_string());
 
         println!("SIZE RECORD HEADER:: {:?}",self.payload[0]);
@@ -93,35 +93,31 @@ impl RecordHeader {
         self.record_name_value.0 = self.parse_record_header(self.payload[2]);
         self.record_table_name_value.0 = self.parse_record_header(self.payload[3]);
         // set the value of each column
+        /*
         self.record_type_value.1 = self.read_bytes(
             &mut vec![0; self.record_type_value.0.1],
-            cell_offset + RecordHeader::OFFESET_VALUE as usize,
-            file,
+            cell_offset + RecordHeader::OFFESET_VALUE as usize
         );
-
         let mut new_offset: usize = cell_offset as usize
             + RecordHeader::OFFESET_VALUE as usize
             + self.record_type_value.0.1;
         self.record_name_value.1 = self.read_bytes(
             &mut vec![0; self.record_name_value.0.1],
-            new_offset,
-            file,
+            new_offset
         );
-        new_offset = new_offset + self.record_name_value.0.1;
+         */
+        let new_offset = RecordHeader::OFFESET_VALUE as usize + self.record_type_value.0.1+self.record_name_value.0.1;
         self.record_table_name_value.1 = self.read_bytes(
-            &mut vec![0; self.record_table_name_value.0.1],
+            self.record_table_name_value.0.1,
             new_offset,
-            file,
         );
 
         self
     }
 
-    fn read_bytes(&self, buff: &mut [u8], offset: usize, file: &mut File) -> String {
-        
-        let _ = file.seek(std::io::SeekFrom::Start(offset as u64));
-        let _ = file.read_exact(buff);
-        dbg!(String::from_utf8_lossy(buff).to_string())
+    fn read_bytes(&self, size: usize, offset: usize) -> String {
+        println!("{:x?}",&self.payload[offset..offset+size]);
+        dbg!(String::from_utf8_lossy(&self.payload[offset..offset+size]).to_string())
     }
 
     fn parse_record_header(&self, serialType: u8) -> (RecordFieldType, usize) {
