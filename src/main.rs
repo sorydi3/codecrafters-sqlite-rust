@@ -233,7 +233,7 @@ impl Page {
                 match value {
                     Some(res) => {
                         let val = &res.record_table_name_value.1;
-                        println!("{:?}",&res);
+                        println!("{:?}",val);
                         val.clone()
                     },
                     _ => "".to_string(),
