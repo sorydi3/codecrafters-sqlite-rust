@@ -115,7 +115,7 @@ impl RecordHeader {
     fn read_bytes(&self, buff: &mut [u8], offset: usize, file: &mut File) -> String {
         let _ = file.seek(std::io::SeekFrom::Start(offset as u64));
         let _ = file.read_exact(buff);
-        String::from_utf8_lossy(buff).to_string()
+        dbg!(String::from_utf8_lossy(buff).to_string())
     }
 
     fn parse_record_header(&self, serialType: u8) -> (RecordFieldType, usize) {
