@@ -86,6 +86,8 @@ impl RecordHeader {
         //self.parse_record_header(self.payload[4]).1
 
         println!("PAYLOAD: {:?}",String::from_utf8_lossy(&self.payload).to_string());
+
+        println!("SIZE RECORD HEADER:: {:?}",self.payload[0]);
         // set the size of each column
         self.record_type_value.0 = self.parse_record_header(self.payload[1]);
         self.record_name_value.0 = self.parse_record_header(self.payload[2]);
