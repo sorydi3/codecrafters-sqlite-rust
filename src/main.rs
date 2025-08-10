@@ -183,7 +183,7 @@ impl Page {
     }
 
     fn fill_cell_vec(&mut self, file: &mut File) -> () {
-        let schema_header_offeset = 8;
+        let schema_header_offeset = 7;
         let mut init_offset = OFFSET + schema_header_offeset;
         let res = file.seek(std::io::SeekFrom::Start(init_offset as u64));
         match res {
