@@ -83,6 +83,8 @@ impl RecordHeader {
 
     fn set_values(&mut self, file: &mut File, cell_offset: usize) -> &mut Self {
         //self.parse_record_header(self.payload[4]).1
+
+        println!("PAYLOAD: {:?}",String::from_utf8_lossy(&self.payload).to_string());
         // set the size of each column
         self.record_type_value.0 = self.parse_record_header(self.payload[1]).1 as u8;
         self.record_name_value.0 = self.parse_record_header(self.payload[2]).1 as u8;
@@ -113,6 +115,7 @@ impl RecordHeader {
     }
 
     fn read_bytes(&self, buff: &mut [u8], offset: usize, file: &mut File) -> String {
+        
         let _ = file.seek(std::io::SeekFrom::Start(offset as u64));
         let _ = file.read_exact(buff);
         dbg!(String::from_utf8_lossy(buff).to_string())
