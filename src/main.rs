@@ -196,7 +196,6 @@ impl Page {
 
                     let row_offset = u16::from_be_bytes([buffer[0], buffer[1]]);
 
-
                     self.print_cell_values(file, row_offset, init_offset as u16);
                     //seek to the row data using the the current
                     //let offse_row_data = file.seek_relative(offset)
@@ -216,13 +215,28 @@ impl Page {
         }
     }
 
+    fn display_cells(&self) {
+        let _ = self
+            .cells
+            .iter()
+            .filter(|c| {
+                let value = (***c).clone();
 
-    fn display_cells(&self) -> () {
-        let res = self.cells.iter().filter(|c| {
-            let v = &mut c.clone().clone();
-            let val = v.take().unwrap().record_name_value.1;
-            "qlite_sequences".to_string() != val  
-        }).collect::<Vec<_>>();
+                match value {
+                    Some(res) => res.record_name_value.1 != "qlite_sequences".to_string(),
+                    _ => false,
+                }
+            }).map(|v| {
+                let value = (**v).clone();
+                match value {
+                    Some(res) => {
+                        let val = res.record_name_value.1;
+                        println!("{:?}",val);
+                        val
+                    },
+                    _ => "".into(),
+                }
+            }).collect::<Vec<_>>();
     }
 
     fn get_table_count(&self) -> u16 {
@@ -251,7 +265,7 @@ impl Page {
 
         let mut record = RecordHeader::new(&payload_buff[..]);
         record.set_values(file, cell_offset as usize);
-        println!("{:?}",record.record_name_value.1);
+        //println!("{:?}", record.record_name_value.1);
         self.cells.push(Box::new(Some(record)));
     }
 }
@@ -300,10 +314,8 @@ fn main() -> Result<()> {
             let mut schema_page = Page::new(&buffer);
 
             schema_page.fill_cell_vec(&mut file);
-            
-            println!("number of tables: {}", schema_page.get_table_count());
-            println!("TABLES NAMES: {:?}", schema_page.display_cells());
 
+            schema_page.display_cells();
         }
         _ => bail!("Missing or invalid command passed: {}", command),
     }
