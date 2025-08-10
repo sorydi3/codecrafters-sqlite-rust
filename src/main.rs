@@ -233,11 +233,11 @@ impl Page {
                 let value = (**v).clone();
                 match value {
                     Some(res) => {
-                        let val = res.record_name_value.1;
-                        println!("{:?}",val);
-                        val
+                        let val = &res.record_name_value.1;
+                        println!("{:?}",&res);
+                        val.clone()
                     },
-                    _ => "".into(),
+                    _ => "".to_string(),
                 }
             }).collect::<Vec<_>>();
     }
