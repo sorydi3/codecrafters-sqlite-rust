@@ -60,23 +60,20 @@ impl DatabaseHeader {
 }
 
 struct Table {
-    rows: Vec<Box<Row>>,
+    rows: Vec<String>,
 }
-
-type CellField = (usize, Box<CellFieldType>, Vec<u8>, usize, usize, String); //(offset,prevtype,cur_bytes,type,size)
-
 #[derive(Debug, Clone)]
 
 enum CellFieldType {
     Na,
-    RecordSize(Option<CellField>),
-    RowId(Option<usize>),
-    SizeCellHeader(Option<CellField>),
-    SchemaType(Option<CellField>),
-    SchemaName(Option<CellField>),
-    SchemaTableName(Option<CellField>),
-    SchemaRootpage(Option<CellField>),
-    SchemaSQL(Option<CellField>),
+    RecordSize,
+    RowId,
+    SizeCellHeader,
+    SchemaType,
+    SchemaName,
+    SchemaTableName,
+    SchemaRootpage,
+    SchemaSQL,
 }
 
 impl Default for CellFieldType {
@@ -85,203 +82,8 @@ impl Default for CellFieldType {
     }
 }
 
-impl CellFieldType {
-    fn get_value(&self) -> String {
-        match &self {
-            CellFieldType::RecordSize(cellfield) => "".into(),
-            _ => "".into(),
-        }
-    }
 
-    fn get_size(&self) -> usize {
-        match &self {
-            CellFieldType::RowId(_) => {
-                1 // THE SIZE ALWAYS IS ONE , DOES NOT CHANGE
-            }
-            CellFieldType::RecordSize(cell) => {
-                let value = cell.as_ref().unwrap();
-                value.0 // return the offeset
-            }
 
-            // TODO
-            _ => 0,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-struct RecordHeader {
-    payload: Vec<u8>,
-    record_size_value: CellFieldType, //(bytes,value,size)
-    record_type_value: CellFieldType,
-    record_name_value: CellFieldType,
-    record_table_name_value: CellFieldType,
-}
-
-impl RecordHeader {
-    const OFFESET_VALUE: u8 = 7;
-    fn new(payload: &[u8]) -> Self {
-        Self {
-            payload: payload.to_vec(),
-            ..Default::default()
-        }
-    }
-
-    fn decode_var_int(&self, offset: usize) -> Option<(Vec<u8>, usize)> {
-        let mut res = vec![];
-        let mut it = offset;
-        let mut value: u64 = 0;
-        let mut found = false;
-        while !found && it < 9 {
-            res.push(self.payload[it]);
-            // construct the final value by joining bits
-            let data_bits = dbg!(self.payload[it] & 0b0111_1111) as u64;
-            value = dbg!((value << 7) | data_bits);
-            // test if last bit is set
-            if !(self.payload[it] & 0b1000_0000 == 0b1000_0000) {
-                // test if last bit is set
-                found = true
-            }
-            it += 1;
-        }
-        Some((res, value as usize))
-    }
-
-    fn set_record_field(
-        &self,
-        offset: usize,
-        prevType: CellFieldType,
-        curr_celltype: CellFieldType,
-    ) -> CellFieldType {
-        if let Some(decoded_var_int) = self.decode_var_int(offset) {
-            let (recordtype, sizevalue) = self.parse_record_header(decoded_var_int.1 as u8);
-            let value = self.read_bytes(sizevalue, offset);
-            match curr_celltype {
-                CellFieldType::RecordSize(None) => CellFieldType::RecordSize(Some((
-                    offset,
-                    Box::new(prevType),
-                    decoded_var_int.0,
-                    decoded_var_int.1,
-                    sizevalue,
-                    value,
-                ))),
-                CellFieldType::RowId(None) => CellFieldType::RowId(Some(offset)),
-                CellFieldType::SchemaType(None) => CellFieldType::SchemaType(Some((
-                    offset,
-                    Box::new(prevType),
-                    decoded_var_int.0,
-                    decoded_var_int.1,
-                    sizevalue,
-                    value,
-                ))),
-                _ => CellFieldType::Na,
-            }
-        } else {
-            CellFieldType::Na
-        }
-    }
-
-    fn set_values(&mut self, _file: &mut File, _cell_offset: usize) -> &mut Self {
-        println!("SETTING CELLS VALUES");
-        // set the record size offset equal zero
-
-        self.record_size_value =
-            self.set_record_field(0, CellFieldType::Na, CellFieldType::RecordSize(None));
-        let record_size = self.set_record_field(
-            self.record_size_value.get_size(),
-            CellFieldType::Na,
-            CellFieldType::RecordSize(None),
-        );
-        let record_schema_type = self.set_record_field(
-            record_size.get_size() + record_size.get_size(),
-            record_size,
-            CellFieldType::SchemaType(None),
-        );
-
-        let mut offset = 0;
-        (1..6)
-            .map(|i| {
-                let res = self.decode_var_int(offset);
-                offset = offset + res.unwrap().0.len();
-
-                if let Some((bytes, value)) = self.decode_var_int(offset) {
-                    (i as usize, self.parse_record_header(value as u8).1)
-                } else {
-                    (0 as usize, 0 as usize)
-                }
-            })
-            .collect::<Vec<(usize, usize)>>();
-
-        //self.parse_record_header(self.payload[4]).1
-        // set the size of each column
-        // set the value of each column
-        /*
-        self.record_type_value.0 = self.parse_record_header(self.payload[1]);
-        self.record_name_value.0 = self.parse_record_header(self.payload[2]);
-        self.record_table_name_value.0 = self.parse_record_header(self.payload[3]);
-        self.record_type_value.1 = self.read_bytes(
-            &mut vec![0; self.record_type_value.0.1],
-            cell_offset + RecordHeader::OFFESET_VALUE as usize
-        );
-        let mut new_offset: usize = cell_offset as usize
-            + RecordHeader::OFFESET_VALUE as usize
-            + self.record_type_value.0.1;
-        self.record_name_value.1 = self.read_bytes(
-            &mut vec![0; self.record_name_value.0.1],
-            new_offset
-        );
-         */
-
-        /*
-        let new_offset = RecordHeader::OFFESET_VALUE as usize
-            + self.record_type_value.0 .1
-            + self.record_name_value.0 .1;
-        self.record_table_name_value.1 =
-            self.read_bytes(self.record_table_name_value.0 .1, new_offset);
-         */
-
-        self
-    }
-
-    fn read_bytes(&self, size: usize, offset: usize) -> String {
-        //println!("{:x?}",&self.payload[offset..offset+size]);
-        String::from_utf8_lossy(&self.payload[offset..offset + size]).to_string()
-    }
-
-    fn parse_record_header(&self, serialType: u8) -> (RecordFieldType, usize) {
-        let (field_type, field_size) = match serialType {
-            0 => (RecordFieldType::Null, 0),
-            1 => (RecordFieldType::I8, 1),
-            2 => (RecordFieldType::I16, 2),
-            3 => (RecordFieldType::I24, 3),
-            4 => (RecordFieldType::I32, 4),
-            5 => (RecordFieldType::I48, 6),
-            6 => (RecordFieldType::I64, 8),
-            7 => (RecordFieldType::Float, 8),
-            8 => (RecordFieldType::Zero, 0),
-            9 => (RecordFieldType::One, 0),
-            n if n >= 12 && n % 2 == 0 => {
-                let size = ((n - 12) / 2) as usize;
-                (RecordFieldType::BLOB(size), size)
-            }
-            n if n >= 13 && n % 2 == 1 => {
-                let size = ((n - 13) / 2) as usize;
-                (RecordFieldType::STRING(size), size)
-            }
-            _ => panic!("NOT SUPORTED TYPE"),
-        };
-
-        (field_type, field_size)
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Row {
-    offset: u16,
-    payload_size: u8,
-    row_id: u16,
-    payload: String,
-}
 
 #[derive(Debug, Clone)]
 struct Page {
@@ -329,8 +131,8 @@ impl Page {
                         .get_cell_value(file, row_offset)
                         .expect("FAILED TO READ CELL VALUE");
                     self.cells.push(res); // add the cells vector
-                    //seek to the row data using the the current
-                    //let offse_row_data = file.seek_relative(offset)
+                                          //seek to the row data using the the current
+                                          //let offse_row_data = file.seek_relative(offset)
                     init_offset = init_offset + step;
 
                     if let Ok(new_pos_cursor) =
@@ -346,22 +148,19 @@ impl Page {
             }
         }
     }
-    
-       fn display_cells(&self) {
-           let res = self
-               .cells
-               .iter()
-               .filter_map(|c| {
-                  match **c != "sqlite_sequence".to_string() {
-                    true =>  Some(c.clone()),
-                    _ => None
-                  }
-               }).collect::<Vec<String>>();
-               
-               println!("{:?}",res.join(" "));
 
+    fn display_cells(&self) {
+        let res = self
+            .cells
+            .iter()
+            .filter_map(|c| match **c != "sqlite_sequence".to_string() {
+                true => Some(c.clone()),
+                _ => None,
+            })
+            .collect::<Vec<String>>();
 
-       }
+        println!("{:?}", res.join(" "));
+    }
 
     fn get_table_count(&self) -> u16 {
         self.table_count
@@ -430,9 +229,11 @@ impl Page {
     fn read_bytes(&self, file: &mut File, offset: usize, size: usize) -> String {
         //println!("{:x?}",&self.payload[offset..offset+size]);
         let mut buff = vec![0; size];
-        file.seek(std::io::SeekFrom::Start(offset as u64)).expect("SEEK read_bytes() failed");
+        file.seek(std::io::SeekFrom::Start(offset as u64))
+            .expect("SEEK read_bytes() failed");
 
-        file.read_exact(&mut buff).expect("read_exact() from read_bytes() failed ");
+        file.read_exact(&mut buff)
+            .expect("read_exact() from read_bytes() failed ");
 
         let res = String::from_utf8_lossy(&buff).to_string();
         res
@@ -469,7 +270,8 @@ impl Page {
 
         let (_, size_schema_table_name) = self.parse_record_header(display_values().0 as u8);
 
-        let _ = self.parse_record_header(display_values().0 as u8);
+        let (_, size_rootpage) = self.parse_record_header(display_values().0 as u8);
+        let size_root_page_offset = size + size_schema_table_name;
 
         let (_, schema_sql_offset) = display_values();
         let tbl_name_offset = schema_sql_offset + size;
