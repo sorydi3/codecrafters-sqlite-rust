@@ -348,16 +348,19 @@ impl Page {
     }
     
        fn display_cells(&self) {
-           let _ = self
+           let res = self
                .cells
                .iter()
-               .filter(|c| {
-                   **c != "sqlite_sequence".to_string()
-               })
-               .map(|v| {
-                   println!("{:?}",v.clone())
-               })
-               .collect::<Vec<_>>();
+               .filter_map(|c| {
+                  match **c != "sqlite_sequence".to_string() {
+                    true =>  Some(c.clone()),
+                    _ => None
+                  }
+               }).collect::<Vec<String>>();
+               
+               println!("{:?}",res.join(" "));
+
+
        }
 
     fn get_table_count(&self) -> u16 {
