@@ -4,7 +4,7 @@ use anyhow::bail;
 
 use crate::db::db::Db;
 
-pub fn parse_sql(sql: String, db: Arc<Db>) -> Result<String, anyhow::Error> {
+pub fn parse_sql(sql: String, db: Arc<Db>) -> Result<usize, anyhow::Error> {
     let sql = sql.split(" ").map(|c| c.to_lowercase()).collect::<Vec<_>>();
     //println!("{:?}", db.get_schema_page());
     match (
@@ -16,8 +16,7 @@ pub fn parse_sql(sql: String, db: Arc<Db>) -> Result<String, anyhow::Error> {
             Ok(db
                 .get_schema_page()
                 .get_cell_count_page_schema(table_name.to_string())
-                .expect("fail")
-                .to_string())
+                .expect("fail"))
         }
         _ => {
             bail!(format!("invalid command {:?}", sql))
@@ -43,8 +42,8 @@ mod tests {
         let sql_oranges = "SELECT COUNT(*) FROM oranges";
         let res_apples = parse_sql(sql_apples.to_string(), db.clone()).expect("PARSE FAILED");
         let res_oranges = parse_sql(sql_oranges.to_string(), db.clone()).expect("PARSE FAILED");
-        assert_eq!(res_apples, "4");
-        assert_eq!(res_oranges, "6")
+        assert_eq!(res_apples, 4);
+        assert_eq!(res_oranges, 6)
     }
 
     #[test]
@@ -54,7 +53,7 @@ mod tests {
         let db = Arc::new(get_db_instance(db_name.clone()));
         let sql_ = format!("SELECT COUNT(*) FROM {db_name}");
         let res_ = parse_sql(sql_.to_string(), db.clone()).expect("PARSE FAILED!!");
-        assert_eq!(res_, "108");
+        assert_eq!(res_, 108);
     }
 
     #[test]
@@ -64,6 +63,6 @@ mod tests {
         let db = Arc::new(get_db_instance(db_name.clone()));
         let sql_ = format!("SELECT COUNT(*) FROM {db_name}");
         let res_ = parse_sql(sql_.to_string(), db.clone()).expect("PARSE FAILED!!");
-        assert_eq!(res_, "4");
+        assert_eq!(res_, 4);
     }
 }
