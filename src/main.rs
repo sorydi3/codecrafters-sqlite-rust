@@ -31,7 +31,10 @@ fn main() -> Result<()> {
             db.get_schema_page().display_cells();
         }
         _ => {
-            parse_sql(command.to_string(), db.clone()).expect("PARSE FAILED");
+            println!(
+                "{:?}",
+                parse_sql(command.to_string(), db.clone()).expect("PARSE FAILED")
+            );
         }
     }
     Ok(())

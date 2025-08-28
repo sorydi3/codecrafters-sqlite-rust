@@ -13,11 +13,11 @@ pub fn parse_sql(sql: String, db: Arc<Db>) -> Result<String, anyhow::Error> {
     ) {
         (true, true) => {
             let table_name = sql.last().expect("last failed: parser");
-            dbg!(Ok(db
+            Ok(db
                 .get_schema_page()
                 .get_cell_count_page_schema(table_name.to_string())
                 .expect("fail")
-                .to_string()))
+                .to_string())
         }
         _ => {
             bail!(format!("invalid command {:?}", sql))
