@@ -5,9 +5,12 @@ use anyhow::bail;
 use crate::db::db::Db;
 
 pub fn parse_sql(sql: String, db: Arc<Db>) -> Result<String, anyhow::Error> {
-    let sql = sql.split(" ").collect::<Vec<_>>();
+    let sql = sql.split(" ").map(|c| c.to_lowercase()).collect::<Vec<_>>();
 
-    match (sql.contains(&&"COUNT(*)"), sql.contains(&&"SELECT")) {
+    match (
+        sql.contains(&"count(*)".to_string()),
+        sql.contains(&"select".to_string()),
+    ) {
         (true, true) => {
             let table_name = sql.last().expect("last failed: parser");
             Ok(db
