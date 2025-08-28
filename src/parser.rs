@@ -6,18 +6,18 @@ use crate::db::db::Db;
 
 pub fn parse_sql(sql: String, db: Arc<Db>) -> Result<String, anyhow::Error> {
     let sql = sql.split(" ").map(|c| c.to_lowercase()).collect::<Vec<_>>();
-    println!("{:?}", db.get_schema_page());
+    //println!("{:?}", db.get_schema_page());
     match (
         sql.contains(&"count(*)".to_string()),
         sql.contains(&"select".to_string()),
     ) {
         (true, true) => {
             let table_name = sql.last().expect("last failed: parser");
-            Ok(db
+            dbg!(Ok(db
                 .get_schema_page()
                 .get_cell_count_page_schema(table_name.to_string())
                 .expect("fail")
-                .to_string())
+                .to_string()))
         }
         _ => {
             bail!(format!("invalid command {:?}", sql))
