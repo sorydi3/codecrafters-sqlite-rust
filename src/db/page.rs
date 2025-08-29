@@ -104,7 +104,7 @@ impl Page {
                     let row_offset = u16::from_be_bytes([buffer[0], buffer[1]]);
 
                     let res = self
-                        .get_cell_value(file, row_offset)
+                        .get_cell_value_schema_page(file, row_offset)
                         .expect("FAILED TO READ CELL VALUE");
 
                     self.cells.entry(res.0).or_insert(Arc::new((
@@ -247,7 +247,7 @@ impl Page {
         }
     }
 
-    fn get_cell_value(
+    fn get_cell_value_schema_page(
         // get the table_name_schema
         &mut self,
         file: &mut Arc<File>,
@@ -277,19 +277,25 @@ impl Page {
 
         let (_, size_rootpage) = self.parse_record_header(display_values().0 as u8);
 
-        let (_, schema_sql_offset) = display_values();
+        let (schema_sql_size, schema_sql_offset) = display_values();
         let tbl_name_offset = schema_sql_offset + size;
 
         let res = self.read_bytes_to_utf8(file, tbl_name_offset, size_schema_table_name);
 
+        let offset_rootpage_pagenumber = tbl_name_offset + size_schema_table_name;
+
         let page_number = self
-            .read_bytes_to_utf8(
-                file,
-                tbl_name_offset + size_schema_table_name,
-                size_rootpage,
-            )
+            .read_bytes_to_utf8(file, offset_rootpage_pagenumber, size_rootpage)
             .parse::<u16>()
             .unwrap();
+
+        let offset_sql_sqlite_schema = offset_rootpage_pagenumber + size_rootpage;
+        let sql_statement = self.read_bytes_to_utf8(
+            file,
+            offset_sql_sqlite_schema,
+            self.parse_record_header(schema_sql_size as u8).1,
+        );
+        println!("SQL-STATEMENT: {sql_statement:?}");
         let res: (String, usize) = (res, page_number as usize);
         Ok(res)
     }
