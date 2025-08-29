@@ -87,6 +87,17 @@ impl Page {
             _ => PageType::UNKNOWNTYPE,
         }
     }
+
+    fn add_page(&mut self, file: &mut Arc<File>, row_offset: u16, page_size: usize) -> () {
+        let res = self
+            .get_cell_value_schema_page(file, row_offset)
+            .expect("FAILED TO READ CELL VALUE");
+
+        self.cells.entry(res.0).or_insert(Arc::new((
+            res.1,
+            Box::new(Page::new_(file, res.1, page_size)),
+        )));
+    }
     pub fn fill_cell_vec(mut self, file: &mut Arc<File>, page_size: usize) -> Self {
         let schema_header_offeset = 8;
         let mut init_offset = OFFSET + schema_header_offeset;
@@ -103,16 +114,10 @@ impl Page {
 
                     let row_offset = u16::from_be_bytes([buffer[0], buffer[1]]);
 
-                    let res = self
-                        .get_cell_value_schema_page(file, row_offset)
-                        .expect("FAILED TO READ CELL VALUE");
-
-                    self.cells.entry(res.0).or_insert(Arc::new((
-                        res.1,
-                        Box::new(Page::new_(file, res.1, page_size)),
-                    ))); // add the cells vector
-                         //seek to the row data using the the current
-                         //let offse_row_data = file.seek_relative(offset)
+                    self.add_page(file, row_offset, page_size);
+                    // add the cells vector
+                    //seek to the row data using the the current
+                    //let offse_row_data = file.seek_relative(offset)
                     init_offset = init_offset + step;
 
                     file.seek(std::io::SeekFrom::Start(init_offset as u64))
@@ -252,7 +257,7 @@ impl Page {
         &mut self,
         file: &mut Arc<File>,
         cell_offset: u16,
-    ) -> Result<(String, usize), anyhow::Error> {
+    ) -> Result<(String, usize, String), anyhow::Error> {
         let mut offset: usize = cell_offset as usize;
 
         let mut payload_size_value = 0;
@@ -296,7 +301,7 @@ impl Page {
             self.parse_record_header(schema_sql_size as u8).1,
         );
         println!("SQL-STATEMENT: {sql_statement:?}");
-        let res: (String, usize) = (res, page_number as usize);
+        let res: (String, usize, String) = (res, page_number as usize, sql_statement);
         Ok(res)
     }
 }
