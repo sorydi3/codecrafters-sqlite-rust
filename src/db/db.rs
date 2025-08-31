@@ -37,6 +37,10 @@ impl Db {
     pub fn get_page_size(&self) -> usize {
         self.header.page_info().0 as usize
     }
+    #[allow(dead_code)]
+    pub fn get_file(&self) -> Arc<File> {
+        self.file.clone()
+    }
 
     pub fn get_table_count_schema_page(&self) -> usize {
         self.schema_page.get_table_count() as usize
