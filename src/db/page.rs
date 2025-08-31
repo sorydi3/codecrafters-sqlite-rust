@@ -32,19 +32,26 @@ enum PageType {
     UNKNOWNTYPE,
 }
 
+type Tables = HashMap<String, Arc<(usize, Box<Page>)>>;
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-
 pub struct Page {
     offset: usize,
     type_page: PageType,
     table_count: u16,       // two bytes
     cell_content_area: u16, // two bytess
-    cells: HashMap<String, Arc<(usize, Box<Page>)>>,
+    tables: Tables,
+    sql_schema: String,
 }
 
 impl Page {
-    pub fn new_(file: &mut Arc<File>, page_number: usize, page_size: usize) -> Self {
+    pub fn new_(
+        file: &mut Arc<File>,
+        page_number: usize,
+        page_size: usize,
+        sql_schema: String,
+    ) -> Self {
         let mut database_page = vec![0; page_size];
         let page_offset = Page::get_offset_page(page_number, page_size);
         file.seek(std::io::SeekFrom::Start(page_offset as u64))
@@ -56,10 +63,41 @@ impl Page {
             type_page: Page::get_page_type(database_page[0]),
             table_count: u16::from_be_bytes([database_page[3], database_page[4]]),
             cell_content_area: u16::from_be_bytes([database_page[5], database_page[6]]),
-            cells: HashMap::default(),
+            tables: HashMap::default(),
+            sql_schema: sql_schema,
         }
     }
 
+    pub fn get_tables_colum_names(&self) -> Vec<Vec<Vec<String>>> {
+        let res = self
+            .tables
+            .iter()
+            .map(|(_table_name, table)| {
+                let sql_str_table: String = table.1.sql_schema.clone();
+                let res = sql_str_table
+                    .split("(")
+                    .map(|c| c.to_string())
+                    .last()
+                    .unwrap()
+                    .replace(")", "")
+                    .replace("\n", "")
+                    .replace("\t", "")
+                    .trim()
+                    .split(",")
+                    .map(|s| s.trim().to_string())
+                    .map(|s| {
+                        s.split(" ")
+                            .map(|s| s.trim().to_string())
+                            .collect::<Vec<String>>()
+                    })
+                    .collect::<Vec<Vec<String>>>();
+
+                res
+            })
+            .collect::<Vec<Vec<Vec<String>>>>();
+
+        res
+    }
     pub fn new__(file: &mut Arc<File>, page_number: usize, page_size: usize) -> Self {
         assert!(page_number >= 1);
         let offset_page = Page::get_offset_page(page_number, page_size);
@@ -74,7 +112,8 @@ impl Page {
             type_page: Page::get_page_type(database_page[0]),
             table_count: u16::from_be_bytes([database_page[3], database_page[4]]),
             cell_content_area: u16::from_be_bytes([database_page[5], database_page[6]]),
-            cells: HashMap::default(),
+            tables: HashMap::default(), // tables
+            sql_schema: String::default(),
         }
         .fill_cell_vec(file, page_size)
     }
@@ -89,15 +128,16 @@ impl Page {
     }
 
     fn add_page(&mut self, file: &mut Arc<File>, row_offset: u16, page_size: usize) -> () {
-        let res = self
+        let (table_name, table_number, sql_schema) = self
             .get_cell_value_schema_page(file, row_offset)
             .expect("FAILED TO READ CELL VALUE");
 
-        self.cells.entry(res.0).or_insert(Arc::new((
-            res.1,
-            Box::new(Page::new_(file, res.1, page_size)),
+        self.tables.entry(table_name).or_insert(Arc::new((
+            table_number,
+            Box::new(Page::new_(file, table_number, page_size, sql_schema)),
         )));
     }
+
     pub fn fill_cell_vec(mut self, file: &mut Arc<File>, page_size: usize) -> Self {
         let schema_header_offeset = 8;
         let mut init_offset = OFFSET + schema_header_offeset;
@@ -136,7 +176,7 @@ impl Page {
 
     pub fn display_cells(&self) {
         let res = self
-            .cells
+            .tables
             .iter()
             .filter_map(|c| match **c.0 != "sqlite_sequence".to_string() {
                 true => Some(c.clone().0.clone()),
@@ -187,7 +227,7 @@ impl Page {
         Some((res, value as usize))
     }
 
-    fn parse_record_header(&self, serialtype: u8) -> (RecordFieldType, usize) {
+    fn get_size_from_varint(&self, serialtype: u8) -> (RecordFieldType, usize) {
         let (field_type, field_size) = match serialtype {
             0 => (RecordFieldType::Null, 0),
             1 => (RecordFieldType::I8, 1),
@@ -246,7 +286,7 @@ impl Page {
     #[allow(dead_code)]
     pub fn get_cell_count_page_schema(&self, table_name: String) -> Option<usize> {
         //WARNING --> ONLY FOR SQUEMA PAGES
-        match self.cells.get::<String>(&table_name) {
+        match self.tables.get::<String>(&table_name) {
             Some(res) => res.1.get_cell_count_page(),
             _ => None,
         }
@@ -275,12 +315,12 @@ impl Page {
         display_values(); //The rowid (safe to ignore)
         display_values(); // Size of record header (varint
 
-        let mut size = self.parse_record_header(display_values().0 as u8).1;
-        size += self.parse_record_header(display_values().0 as u8).1;
+        let mut size = self.get_size_from_varint(display_values().0 as u8).1;
+        size += self.get_size_from_varint(display_values().0 as u8).1;
 
-        let (_, size_schema_table_name) = self.parse_record_header(display_values().0 as u8);
+        let (_, size_schema_table_name) = self.get_size_from_varint(display_values().0 as u8);
 
-        let (_, size_rootpage) = self.parse_record_header(display_values().0 as u8);
+        let (_, size_rootpage) = self.get_size_from_varint(display_values().0 as u8);
 
         let (schema_sql_size, schema_sql_offset) = display_values();
         let tbl_name_offset = schema_sql_offset + size;
@@ -298,7 +338,7 @@ impl Page {
         let sql_statement = self.read_bytes_to_utf8(
             file,
             offset_sql_sqlite_schema,
-            self.parse_record_header(schema_sql_size as u8).1,
+            self.get_size_from_varint(schema_sql_size as u8).1,
         );
         println!("SQL-STATEMENT: {sql_statement:?}");
         let res: (String, usize, String) = (res, page_number as usize, sql_statement);
@@ -328,7 +368,7 @@ mod tests {
     #[test]
     fn test_cells_filled_schema_page() {
         let db = get_db_instance();
-        let cells_schema_page = &db.get_schema_page().cells;
+        let cells_schema_page = &db.get_schema_page().tables;
         assert!(cells_schema_page.len() > 0);
     }
 
@@ -336,7 +376,7 @@ mod tests {
     fn test_cells_content() {
         let res: &str = "apples sqlite_sequence oranges";
         let db = get_db_instance();
-        let cells_schema_page = &db.get_schema_page().cells;
+        let cells_schema_page = &db.get_schema_page().tables;
         assert!(cells_schema_page.len() == 3);
         assert!(cells_schema_page.iter().all(|c| res.contains(c.0)));
     }
@@ -363,7 +403,7 @@ mod tests {
         let db = get_db_instance();
         let tables = vec![("oranges", 6), ("apples", 4)];
         tables.iter().for_each(|table| {
-            if let Some(count_cells) = &db.get_schema_page().cells.get(table.0) {
+            if let Some(count_cells) = &db.get_schema_page().tables.get(table.0) {
                 let count = count_cells
                     .1
                     .get_cell_count_page()
@@ -373,5 +413,78 @@ mod tests {
                 assert!(false)
             }
         })
+    }
+
+    #[test]
+    fn get_column_names_db_sample() {
+        let db = get_db_instance();
+        let res = [
+            [["name".to_string()].to_vec(), ["seq".into()].to_vec()].to_vec(),
+            [
+                [
+                    "id".into(),
+                    "integer".into(),
+                    "primary".into(),
+                    "key".into(),
+                    "autoincrement".into(),
+                ]
+                .to_vec(),
+                ["name".into(), "text".into()].to_vec(),
+                ["color".into(), "text".into()].to_vec(),
+            ]
+            .to_vec(),
+            [
+                [
+                    "id".into(),
+                    "integer".into(),
+                    "primary".into(),
+                    "key".into(),
+                    "autoincrement".into(),
+                ]
+                .to_vec(),
+                ["name".into(), "text".into()].to_vec(),
+                ["description".into(), "text".into()].to_vec(),
+            ]
+            .to_vec(),
+        ]
+        .to_vec();
+        let col_names_db = db.get_schema_page().get_tables_colum_names();
+        assert!(col_names_db.iter().eq(res.iter()));
+    }
+
+    #[test]
+    fn test_decode_varint() {
+        let offset_oranges_cell_1_size_record = 3779;
+        let offset_oranges_cell_sql_squema = 3786;
+        let db = get_db_instance();
+        let mut file = db.get_file();
+        let schema_page = db.get_schema_page();
+        let (bytes, value) = schema_page
+            .decode_var_int(offset_oranges_cell_1_size_record, &mut file)
+            .expect("DECODE VARINT FAILED");
+        assert_eq!(value, 120);
+        assert_eq!(bytes.len(), 1);
+
+        let (bytes, value) = schema_page
+            .decode_var_int(offset_oranges_cell_sql_squema, &mut file)
+            .expect("DECODE VARINT FAILED");
+
+        assert_eq!(value, 199);
+        assert_eq!(bytes.len(), 2);
+    }
+
+    #[test]
+    fn test_get_size_from_varint() {
+        let offset_oranges_cell_sql_squema = 3786;
+        let db = get_db_instance();
+        let mut file = db.get_file();
+        let schema_page = db.get_schema_page();
+        let size = schema_page.get_size_from_varint(
+            schema_page
+                .decode_var_int(offset_oranges_cell_sql_squema, &mut file)
+                .expect("DECODE VARINT FAILED")
+                .1 as u8,
+        );
+        assert_eq!(size.1, 93);
     }
 }
