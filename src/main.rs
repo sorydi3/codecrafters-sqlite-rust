@@ -28,7 +28,7 @@ fn main() -> Result<()> {
             println!("number of tables: {}", db.get_table_count_schema_page());
         }
         ".tables" => {
-            db.get_schema_page().display_cells();
+            db.get_schema_page().borrow().display_cells();
         }
         _ => {
             println!(
