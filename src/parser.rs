@@ -15,6 +15,7 @@ pub fn parse_sql(sql: String, db: Arc<Db>) -> Result<usize, anyhow::Error> {
             let table_name = sql.last().expect("last failed: parser");
             Ok(db
                 .get_schema_page()
+                .borrow()
                 .get_cell_count_page_schema(table_name.to_string())
                 .expect("fail"))
         }
