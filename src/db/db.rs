@@ -1,5 +1,6 @@
 use crate::db::header::DatabaseHeader;
 use crate::db::page::Page;
+use std::cell::{RefCell, RefMut};
 use std::fs::File;
 use std::sync::Arc;
 
@@ -7,7 +8,7 @@ use std::sync::Arc;
 pub struct Db {
     file: Arc<File>,
     header: Arc<DatabaseHeader>,
-    schema_page: Arc<Page>,
+    schema_page: Arc<RefCell<Page>>,
     pages: Arc<Vec<Box<Page>>>, // all other pages
 }
 
@@ -19,11 +20,11 @@ impl Db {
         let page_size = header.page_info().0;
 
         // read head
-        let schema_page = Arc::new(Page::new__(
+        let schema_page = Arc::new(RefCell::new(Page::new__(
             &mut file.clone(),
             page_number,
             page_size as usize,
-        ));
+        )));
         let pages = Arc::new(vec![]);
 
         Self {
@@ -43,10 +44,14 @@ impl Db {
     }
 
     pub fn get_table_count_schema_page(&self) -> usize {
-        self.schema_page.get_table_count() as usize
+        self.schema_page.borrow().get_table_count() as usize
     }
 
-    pub fn get_schema_page(&self) -> Arc<Page> {
+    pub fn get_schema_page(&self) -> Arc<RefCell<Page>> {
         self.schema_page.clone()
+    }
+
+    pub fn fill_tables_rows(&mut self) -> std::sync::Arc<RefMut<'_, Page>> {
+        Arc::new(self.schema_page.borrow_mut())
     }
 }
