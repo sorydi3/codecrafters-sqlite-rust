@@ -1,4 +1,5 @@
 use crate::db::header::HEADER_BYTES_SIZE;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
@@ -32,7 +33,7 @@ enum PageType {
     UNKNOWNTYPE,
 }
 
-type Tables = HashMap<String, Arc<(usize, Box<Page>)>>;
+type Rows = HashMap<String, Arc<(usize, RefCell<Page>)>>;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -41,7 +42,7 @@ pub struct Page {
     type_page: PageType,
     table_count: u16,       // two bytes
     cell_content_area: u16, // two bytess
-    tables: Tables,
+    rows: Rows,
     sql_schema: String,
 }
 
@@ -63,41 +64,11 @@ impl Page {
             type_page: Page::get_page_type(database_page[0]),
             table_count: u16::from_be_bytes([database_page[3], database_page[4]]),
             cell_content_area: u16::from_be_bytes([database_page[5], database_page[6]]),
-            tables: HashMap::default(),
+            rows: HashMap::default(),
             sql_schema: sql_schema,
         }
     }
 
-    pub fn get_tables_colum_names(&self) -> Vec<Vec<Vec<String>>> {
-        let res = self
-            .tables
-            .iter()
-            .map(|(_table_name, table)| {
-                let sql_str_table: String = table.1.sql_schema.clone();
-                let res = sql_str_table
-                    .split("(")
-                    .map(|c| c.to_string())
-                    .last()
-                    .unwrap()
-                    .replace(")", "")
-                    .replace("\n", "")
-                    .replace("\t", "")
-                    .trim()
-                    .split(",")
-                    .map(|s| s.trim().to_string())
-                    .map(|s| {
-                        s.split(" ")
-                            .map(|s| s.trim().to_string())
-                            .collect::<Vec<String>>()
-                    })
-                    .collect::<Vec<Vec<String>>>();
-
-                res
-            })
-            .collect::<Vec<Vec<Vec<String>>>>();
-
-        res
-    }
     pub fn new__(file: &mut Arc<File>, page_number: usize, page_size: usize) -> Self {
         assert!(page_number >= 1);
         let offset_page = Page::get_offset_page(page_number, page_size);
@@ -112,11 +83,33 @@ impl Page {
             type_page: Page::get_page_type(database_page[0]),
             table_count: u16::from_be_bytes([database_page[3], database_page[4]]),
             cell_content_area: u16::from_be_bytes([database_page[5], database_page[6]]),
-            tables: HashMap::default(), // tables
+            rows: HashMap::default(), // rows
             sql_schema: String::default(),
         }
         .fill_cell_vec(file, page_size)
     }
+
+    #[allow(dead_code)]
+    pub fn get_rows_colum_names(&self, _table_name: String) -> Vec<Vec<String>> {
+        self.sql_schema
+            .split("(")
+            .map(|c| c.to_string())
+            .last()
+            .unwrap()
+            .replace(")", "")
+            .replace("\n", "")
+            .replace("\t", "")
+            .trim()
+            .split(",")
+            .map(|s| s.trim().to_string())
+            .map(|s| {
+                s.split(" ")
+                    .map(|s| s.trim().to_string())
+                    .collect::<Vec<String>>()
+            })
+            .collect::<Vec<Vec<String>>>()
+    }
+
     fn get_page_type(byte: u8) -> PageType {
         match byte {
             0x02 => PageType::INTERIORINDEX,
@@ -132,9 +125,9 @@ impl Page {
             .get_cell_value_schema_page(file, row_offset)
             .expect("FAILED TO READ CELL VALUE");
 
-        self.tables.entry(table_name).or_insert(Arc::new((
+        self.rows.entry(table_name).or_insert(Arc::new((
             table_number,
-            Box::new(Page::new_(file, table_number, page_size, sql_schema)),
+            RefCell::new(Page::new_(file, table_number, page_size, sql_schema)),
         )));
     }
 
@@ -176,7 +169,7 @@ impl Page {
 
     pub fn display_cells(&self) {
         let res = self
-            .tables
+            .rows
             .iter()
             .filter_map(|c| match **c.0 != "sqlite_sequence".to_string() {
                 true => Some(c.clone().0.clone()),
@@ -189,6 +182,10 @@ impl Page {
 
     pub fn get_table_count(&self) -> u16 {
         self.table_count
+    }
+
+    pub fn get_colum_values(&self, colum_name: String) -> Vec<String> {
+        vec![]
     }
 
     #[allow(dead_code)]
@@ -286,12 +283,11 @@ impl Page {
     #[allow(dead_code)]
     pub fn get_cell_count_page_schema(&self, table_name: String) -> Option<usize> {
         //WARNING --> ONLY FOR SQUEMA PAGES
-        match self.tables.get::<String>(&table_name) {
-            Some(res) => res.1.get_cell_count_page(),
+        match self.rows.get::<String>(&table_name) {
+            Some(res) => res.1.borrow().get_cell_count_page(),
             _ => None,
         }
     }
-
     fn get_cell_value_schema_page(
         // get the table_name_schema
         &mut self,
@@ -344,12 +340,164 @@ impl Page {
         let res: (String, usize, String) = (res, page_number as usize, sql_statement);
         Ok(res)
     }
+
+    fn filter_columns(
+        &self,
+        columns: &[&str],
+        table: Vec<Vec<Vec<(String, String)>>>,
+    ) -> Vec<Vec<String>> {
+        table[0]
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .filter(|col| columns.as_ref().contains(&&col.0.as_str()))
+                    .collect::<Vec<_>>()
+            })
+            .map(|row| row.iter().map(|col| col.1.clone()).collect::<Vec<String>>())
+            .collect::<Vec<Vec<String>>>()
+    }
+
+    pub fn display_table_colums(
+        &mut self,
+        file: &mut Arc<File>,
+        columns: &[&str],
+        table_name: String,
+    ) -> Vec<Vec<String>> {
+        let rows: Vec<Vec<Vec<(String, String)>>> = self
+            .rows
+            .iter_mut()
+            .filter(|table| (*(*table).0).eq(&table_name))
+            .map(|c| {
+                let (table_name, table_data) = c;
+                table_data
+                    .1
+                    .borrow_mut()
+                    .parse_page(table_name.clone(), file)
+            })
+            .collect();
+        let resp: Vec<Vec<String>> = self.filter_columns(columns, rows);
+        resp
+    }
+
+    pub fn parse_row_data(
+        &self,
+        row_offset: u64,
+        table_name: String,
+        file: &mut Arc<File>,
+    ) -> Vec<(String, String)> {
+        let page_offset = self.offset as u64;
+
+        let row_offset_relative_current_page = (page_offset + row_offset) as usize;
+        let row_size = self.decode_var_int(row_offset_relative_current_page, file);
+
+        let row_id_offeset = row_offset_relative_current_page + row_size.as_ref().unwrap().0.len(); // offset row id
+        let row_id = self.decode_var_int(row_id_offeset, file);
+
+        let offset_size_header_byte_array =
+            row_id_offeset + row_id.as_ref().unwrap().0.iter().len();
+        let size_header_byte_array = self
+            .decode_var_int(offset_size_header_byte_array, file)
+            .as_ref()
+            .unwrap()
+            .1;
+        let mut buffer_header_byter_array_cell_serial_types = vec![0; size_header_byte_array];
+
+        file.seek(std::io::SeekFrom::Start(
+            offset_size_header_byte_array as u64,
+        ))
+        .expect(format!("Failed to seek to offset{row_offset:?}").as_str());
+
+        file.read_exact(&mut buffer_header_byter_array_cell_serial_types)
+            .expect("READ EXACT FAILED!!");
+        println!(
+            "BUFFER SERIAL_TYPE: {:x?}",
+            buffer_header_byter_array_cell_serial_types
+        );
+        let sizes_fields = buffer_header_byter_array_cell_serial_types
+            .iter()
+            .skip(1)
+            .map(|value| self.get_size_from_varint(*value).1)
+            .collect::<Vec<_>>();
+        // heady + data =  row_size
+        assert!(
+            sizes_fields.iter().sum::<usize>() + buffer_header_byter_array_cell_serial_types.len()
+                == row_size.as_ref().unwrap().1
+        ); // check that the header size and the sum of fields is equal to the row size.
+
+        // seek to offset data
+        let data_offset_byte_array =
+            offset_size_header_byte_array + buffer_header_byter_array_cell_serial_types.len();
+        file.seek(std::io::SeekFrom::Start(data_offset_byte_array as u64))
+            .expect("seek failed");
+
+        let mut offset = data_offset_byte_array;
+
+        let row_data: Vec<String> = sizes_fields
+            .iter()
+            .map(|size| {
+                //
+                let mut res = self.read_bytes_to_utf8(file, offset, *size);
+                //res = res.replace(" ", row_id.as_ref().unwrap().1.to_string().as_str());
+                //print!(" {:?} ", res);
+
+                offset += *size;
+
+                match res.eq("") {
+                    true => row_id.as_ref().unwrap().1.to_string(),
+                    _ => res,
+                }
+            })
+            .collect();
+        let column_names = self.get_rows_colum_names(table_name.clone());
+        assert!(row_data.len() == column_names.len()); // assert colum data length and colum types are equal
+                                                       // join colum names and data of the current row
+        let res = column_names
+            .iter()
+            .zip(row_data.iter())
+            .map(|c| (c.0[0].clone(), c.1.clone()))
+            .collect::<Vec<_>>();
+
+        println!("{:?}", res);
+
+        res
+    }
+
+    fn parse_page(
+        &mut self,
+        table_name: String,
+        file: &mut Arc<File>,
+    ) -> Vec<Vec<(String, String)>> {
+        println!(
+            "TABLE_NAME: {:?}  TYPE PAGE:{:?} TABLE COUNT_ROWS{:?} OFFSET ROW: DATA {:?}  ROW: {:?}",table_name,
+            self.type_page, self.table_count,self.offset,self.rows
+        );
+
+        let offset_page_header = 8;
+        file.seek(std::io::SeekFrom::Start(
+            (self.offset + offset_page_header) as u64,
+        )); // seek to offset page
+
+        //TODO -> CHECK FOR PAGE TYPE FOR NON LEAF PAGES THERE MIGHT BE RIGHT POINTER BEFORE THE CELLS START.
+        // USE A MATCH TO CHECK THE TYPE OF THE PAGE
+
+        let size_cell_pointer = 2;
+        let mut buffer = vec![0u8; (self.table_count * size_cell_pointer) as usize];
+        file.read_exact(&mut buffer);
+        println!("{buffer:x?}");
+        //seek from the start of the page
+        let res: Vec<Vec<(String, String)>> = buffer
+            .chunks(2) // cell size
+            .map(|cell| u16::from_be_bytes([cell[0], cell[1]]))
+            .map(|offeset_cell| self.parse_row_data(offeset_cell as u64, table_name.clone(), file))
+            .collect();
+        res
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::db::Db;
+    use crate::db::{self, db::Db};
 
     fn get_db_instance() -> Db {
         let db_file_path: String =
@@ -368,7 +516,8 @@ mod tests {
     #[test]
     fn test_cells_filled_schema_page() {
         let db = get_db_instance();
-        let cells_schema_page = &db.get_schema_page().tables;
+        let schema = &db.get_schema_page();
+        let cells_schema_page = &schema.borrow().rows;
         assert!(cells_schema_page.len() > 0);
     }
 
@@ -376,7 +525,8 @@ mod tests {
     fn test_cells_content() {
         let res: &str = "apples sqlite_sequence oranges";
         let db = get_db_instance();
-        let cells_schema_page = &db.get_schema_page().tables;
+        let schema = &db.get_schema_page();
+        let cells_schema_page = &schema.borrow().rows;
         assert!(cells_schema_page.len() == 3);
         assert!(cells_schema_page.iter().all(|c| res.contains(c.0)));
     }
@@ -385,7 +535,8 @@ mod tests {
     fn test_schema_test_page_type() {
         let res_page_type: PageType = PageType::LEAFTABLE;
         let db = get_db_instance();
-        let page_type: &PageType = &db.get_schema_page().type_page;
+        let schema = &db.get_schema_page();
+        let page_type: &PageType = &schema.borrow().type_page;
         assert!(*page_type == res_page_type);
     }
 
@@ -401,11 +552,12 @@ mod tests {
     #[test]
     fn test_cells_counts_for_squema_pages() {
         let db = get_db_instance();
-        let tables = vec![("oranges", 6), ("apples", 4)];
-        tables.iter().for_each(|table| {
-            if let Some(count_cells) = &db.get_schema_page().tables.get(table.0) {
+        let rows = vec![("oranges", 6), ("apples", 4)];
+        rows.iter().for_each(|table| {
+            if let Some(count_cells) = &db.get_schema_page().borrow().rows.get(table.0) {
                 let count = count_cells
                     .1
+                    .borrow()
                     .get_cell_count_page()
                     .expect("COUNT PAGE FAILED");
                 assert_eq!(count, table.1)
@@ -418,37 +570,34 @@ mod tests {
     #[test]
     fn get_column_names_db_sample() {
         let db = get_db_instance();
-        let res = [
-            [["name".to_string()].to_vec(), ["seq".into()].to_vec()].to_vec(),
+
+        let table_name: String = "oranges".into();
+
+        let res: Vec<Vec<String>> = [
             [
-                [
-                    "id".into(),
-                    "integer".into(),
-                    "primary".into(),
-                    "key".into(),
-                    "autoincrement".into(),
-                ]
-                .to_vec(),
-                ["name".into(), "text".into()].to_vec(),
-                ["color".into(), "text".into()].to_vec(),
+                "id".into(),
+                "integer".into(),
+                "primary".into(),
+                "key".into(),
+                "autoincrement".into(),
             ]
             .to_vec(),
-            [
-                [
-                    "id".into(),
-                    "integer".into(),
-                    "primary".into(),
-                    "key".into(),
-                    "autoincrement".into(),
-                ]
-                .to_vec(),
-                ["name".into(), "text".into()].to_vec(),
-                ["description".into(), "text".into()].to_vec(),
-            ]
-            .to_vec(),
+            ["name".into(), "text".into()].to_vec(),
+            ["description".into(), "text".into()].to_vec(),
         ]
         .to_vec();
-        let col_names_db = db.get_schema_page().get_tables_colum_names();
+
+        let col_names_db = db
+            .get_schema_page()
+            .borrow()
+            .rows
+            .get("oranges")
+            .unwrap()
+            .1
+            .borrow()
+            .get_rows_colum_names(table_name);
+        println!("{:?}", col_names_db);
+
         assert!(col_names_db.iter().eq(res.iter()));
     }
 
@@ -460,12 +609,14 @@ mod tests {
         let mut file = db.get_file();
         let schema_page = db.get_schema_page();
         let (bytes, value) = schema_page
+            .borrow()
             .decode_var_int(offset_oranges_cell_1_size_record, &mut file)
             .expect("DECODE VARINT FAILED");
         assert_eq!(value, 120);
         assert_eq!(bytes.len(), 1);
 
         let (bytes, value) = schema_page
+            .borrow()
             .decode_var_int(offset_oranges_cell_sql_squema, &mut file)
             .expect("DECODE VARINT FAILED");
 
@@ -479,12 +630,81 @@ mod tests {
         let db = get_db_instance();
         let mut file = db.get_file();
         let schema_page = db.get_schema_page();
-        let size = schema_page.get_size_from_varint(
+        let size = schema_page.borrow().get_size_from_varint(
             schema_page
+                .borrow()
                 .decode_var_int(offset_oranges_cell_sql_squema, &mut file)
                 .expect("DECODE VARINT FAILED")
                 .1 as u8,
         );
         assert_eq!(size.1, 93);
+    }
+
+    #[test]
+    fn test_display_columns_given_2_columns() {
+        let db = get_db_instance();
+        let schema_page = db.get_schema_page();
+        let mut file: Arc<File> = db.get_file();
+        let table_name = "oranges";
+        let expected_rows = vec![
+            vec!["Mandarin".to_string(), "great for snacking".to_string()],
+            vec!["Tangelo".to_string(), "sweet and tart".to_string()],
+            vec![
+                "Tangerine".to_string(),
+                "great for sweeter juice".to_string(),
+            ],
+            vec![
+                "Clementine".to_string(),
+                "usually seedless, great for snacking".to_string(),
+            ],
+            vec![
+                "Valencia Orange".to_string(),
+                "best for juicing".to_string(),
+            ],
+            vec![
+                "Navel Orange".to_string(),
+                "sweet with slight bitterness".to_string(),
+            ],
+        ];
+        let actual_rows = schema_page.borrow_mut().display_table_colums(
+            &mut file,
+            &vec!["name", "description"],
+            table_name.to_string(),
+        );
+
+        let mut actual_sorted = actual_rows.clone();
+        let mut expected_sorted = expected_rows.clone();
+        actual_sorted.sort();
+        expected_sorted.sort();
+        assert_eq!(actual_sorted, expected_sorted);
+    }
+
+    #[test]
+    fn test_display_columns_given_1_column() {
+        let db = get_db_instance();
+        let schema_page = db.get_schema_page();
+        let mut file: Arc<File> = db.get_file();
+        let table_name = "oranges";
+
+        let expected_rows = vec![
+            vec!["Mandarin".to_string()],
+            vec!["Tangelo".to_string()],
+            vec!["Tangerine".to_string()],
+            vec!["Clementine".to_string()],
+            vec!["Valencia Orange".to_string()],
+            vec!["Navel Orange".to_string()],
+        ];
+
+        let actual_rows = schema_page.borrow_mut().display_table_colums(
+            &mut file,
+            &vec!["name"],
+            table_name.to_string(),
+        );
+
+        let mut actual_sorted = actual_rows.clone();
+        let mut expected_sorted = expected_rows.clone();
+        actual_sorted.sort();
+        expected_sorted.sort();
+        assert_eq!(actual_sorted, expected_sorted);
     }
 }
