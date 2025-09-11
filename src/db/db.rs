@@ -51,12 +51,14 @@ impl Db {
         self.schema_page.clone()
     }
 
+    #[allow(dead_code)]
     pub fn display_columns(&mut self, columns: &[&str], table_name: String) {
         self.schema_page
             .borrow_mut()
             .display_table_colums(&mut self.file, columns, table_name);
     }
 
+    #[allow(dead_code)]
     pub fn fill_tables_rows(&mut self) -> std::sync::Arc<RefMut<'_, Page>> {
         Arc::new(self.schema_page.borrow_mut())
     }
