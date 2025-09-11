@@ -96,10 +96,10 @@ fn main() -> Result<()> {
                     println!("{:?}", count);
                 }
                 Err(_) => {
-                    let response = res
-                        .split("\n")
-                        .map(|c| println!("{:?}", c.to_string().clone()))
-                        .collect::<Vec<()>>();
+                    // Simplified printing without quotes
+                    for row in res.split('\n') {
+                        println!("{}", row);
+                    }
 
                     // println!("{:#?}", response);
                 }
