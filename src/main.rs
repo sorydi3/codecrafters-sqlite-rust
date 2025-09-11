@@ -66,7 +66,7 @@ fn handle_sql_query(sql_query: String, db: &mut Arc<Db>) -> Result<String> {
 }
 
 fn main() -> Result<()> {
-    // Parse arguments
+    //Parse arguments
     let args = std::env::args().collect::<Vec<_>>();
     match args.len() {
         0 | 1 => bail!("Missing <database path> and <command>"),
