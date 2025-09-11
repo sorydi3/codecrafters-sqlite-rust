@@ -28,7 +28,7 @@ fn get_column_data(
 
     let res = columns_names
         .iter()
-        .map(|c| c.join(" "))
+        .map(|c| c.join("|"))
         .collect::<Vec<_>>();
     let out = res.join("\n");
     Ok(out)
