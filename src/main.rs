@@ -89,17 +89,21 @@ fn main() -> Result<()> {
             db.get_schema_page().borrow().display_cells();
         }
         _ => {
-            handle_sql_query(command.to_string(), &mut db)
-                .unwrap()
-                .split("\n")
-                .for_each(|row| match row.parse::<usize>() {
-                    OK(count) => {
-                        println!("{:?}", count);
-                    }
-                    Err(_) => {
-                        println!("{:?}", row);
-                    }
-                });
+            let res = handle_sql_query(command.to_string(), &mut db).unwrap();
+
+            match res.parse::<usize>() {
+                OK(count) => {
+                    println!("{:?}", count);
+                }
+                Err(_) => {
+                    let response = res
+                        .split("\n")
+                        .map(|c| c.to_string().clone())
+                        .collect::<Vec<String>>();
+
+                    println!("{:#?}", response);
+                }
+            }
         }
     }
     Ok(())
