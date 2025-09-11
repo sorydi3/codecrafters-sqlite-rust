@@ -98,10 +98,10 @@ fn main() -> Result<()> {
                 Err(_) => {
                     let response = res
                         .split("\n")
-                        .map(|c| c.to_string().clone())
-                        .collect::<Vec<String>>();
+                        .map(|c| println!("{:?}", c.to_string().clone()))
+                        .collect::<Vec<()>>();
 
-                    println!("{:#?}", response);
+                    // println!("{:#?}", response);
                 }
             }
         }
