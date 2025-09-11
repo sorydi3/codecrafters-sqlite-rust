@@ -91,23 +91,34 @@ impl Page {
 
     #[allow(dead_code)]
     pub fn get_rows_colum_names(&self, _table_name: String) -> Vec<Vec<String>> {
-        self.sql_schema
-            .split("(")
-            .map(|c| c.to_string())
-            .last()
-            .unwrap()
-            .replace(")", "")
-            .replace("\n", "")
-            .replace("\t", "")
-            .trim()
-            .split(",")
-            .map(|s| s.trim().to_string())
-            .map(|s| {
-                s.split(" ")
-                    .map(|s| s.trim().to_string())
-                    .collect::<Vec<String>>()
-            })
-            .collect::<Vec<Vec<String>>>()
+        match self.sql_schema.eq("") {
+            true => {
+                let page = self
+                    .rows
+                    .get(&_table_name)
+                    .expect("Page::get_rows_colum_names():GET TABLE NAME FAILED!!");
+                page.1.borrow().get_rows_colum_names(_table_name)
+            }
+            _ => self
+                .sql_schema
+                .split("(")
+                .map(|c| c.to_string())
+                .last()
+                .unwrap()
+                .replace(")", "")
+                .replace("\n", "")
+                .replace("\t", "")
+                .trim()
+                .split(",")
+                .map(|s| s.trim().to_string())
+                .map(|s| {
+                    s.split(" ")
+                        .map(|s| s.trim().to_string())
+                        .collect::<Vec<String>>()
+                })
+                .collect::<Vec<Vec<String>>>(),
+        }
+        // THIS ONLY WORK FOR NON SCHEMA PAGES
     }
 
     fn get_page_type(byte: u8) -> PageType {
@@ -168,7 +179,7 @@ impl Page {
     }
 
     pub fn display_cells(&self) {
-        let res = self
+        let _res = self
             .rows
             .iter()
             .filter_map(|c| match **c.0 != "sqlite_sequence".to_string() {
@@ -177,15 +188,11 @@ impl Page {
             })
             .collect::<Vec<String>>();
 
-        println!("{:?}", res.join(" "));
+        println!("{:?}", _res.len());
     }
 
     pub fn get_table_count(&self) -> u16 {
         self.table_count
-    }
-
-    pub fn get_colum_values(&self, colum_name: String) -> Vec<String> {
-        vec![]
     }
 
     #[allow(dead_code)]
@@ -220,7 +227,6 @@ impl Page {
             it += 1;
         }
 
-        //println!(" VALUE DECODE : {value:?}");
         Some((res, value as usize))
     }
 
@@ -251,7 +257,6 @@ impl Page {
     }
 
     fn read_bytes_to_utf8(&self, file: &mut Arc<File>, offset: usize, size: usize) -> String {
-        //println!("{:x?}",&self.payload[offset..offset+size]);
         let mut buff = vec![0; size];
         file.seek(std::io::SeekFrom::Start(offset as u64))
             .expect("SEEK read_bytes() failed");
@@ -336,7 +341,6 @@ impl Page {
             offset_sql_sqlite_schema,
             self.get_size_from_varint(schema_sql_size as u8).1,
         );
-        println!("SQL-STATEMENT: {sql_statement:?}");
         let res: (String, usize, String) = (res, page_number as usize, sql_statement);
         Ok(res)
     }
@@ -409,10 +413,7 @@ impl Page {
 
         file.read_exact(&mut buffer_header_byter_array_cell_serial_types)
             .expect("READ EXACT FAILED!!");
-        println!(
-            "BUFFER SERIAL_TYPE: {:x?}",
-            buffer_header_byter_array_cell_serial_types
-        );
+
         let sizes_fields = buffer_header_byter_array_cell_serial_types
             .iter()
             .skip(1)
@@ -436,9 +437,8 @@ impl Page {
             .iter()
             .map(|size| {
                 //
-                let mut res = self.read_bytes_to_utf8(file, offset, *size);
+                let res = self.read_bytes_to_utf8(file, offset, *size);
                 //res = res.replace(" ", row_id.as_ref().unwrap().1.to_string().as_str());
-                //print!(" {:?} ", res);
 
                 offset += *size;
 
@@ -457,8 +457,6 @@ impl Page {
             .map(|c| (c.0[0].clone(), c.1.clone()))
             .collect::<Vec<_>>();
 
-        println!("{:?}", res);
-
         res
     }
 
@@ -467,23 +465,18 @@ impl Page {
         table_name: String,
         file: &mut Arc<File>,
     ) -> Vec<Vec<(String, String)>> {
-        println!(
-            "TABLE_NAME: {:?}  TYPE PAGE:{:?} TABLE COUNT_ROWS{:?} OFFSET ROW: DATA {:?}  ROW: {:?}",table_name,
-            self.type_page, self.table_count,self.offset,self.rows
-        );
-
         let offset_page_header = 8;
         file.seek(std::io::SeekFrom::Start(
             (self.offset + offset_page_header) as u64,
-        )); // seek to offset page
+        ))
+        .expect("SEEK FAILED!!"); // seek to offset page
 
         //TODO -> CHECK FOR PAGE TYPE FOR NON LEAF PAGES THERE MIGHT BE RIGHT POINTER BEFORE THE CELLS START.
         // USE A MATCH TO CHECK THE TYPE OF THE PAGE
 
         let size_cell_pointer = 2;
         let mut buffer = vec![0u8; (self.table_count * size_cell_pointer) as usize];
-        file.read_exact(&mut buffer);
-        println!("{buffer:x?}");
+        file.read_exact(&mut buffer).expect("READ EXACT FAILED!!");
         //seek from the start of the page
         let res: Vec<Vec<(String, String)>> = buffer
             .chunks(2) // cell size
@@ -497,7 +490,7 @@ impl Page {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{self, db::Db};
+    use crate::db::db::Db;
 
     fn get_db_instance() -> Db {
         let db_file_path: String =
