@@ -188,7 +188,7 @@ impl Page {
             })
             .collect::<Vec<String>>();
 
-        println!("{:?}", _res.join(" "));
+        println!("{}", _res.join(" "));
     }
 
     pub fn get_table_count(&self) -> u16 {
