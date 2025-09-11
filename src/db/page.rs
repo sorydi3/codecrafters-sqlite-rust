@@ -179,7 +179,7 @@ impl Page {
     }
 
     pub fn display_cells(&self) {
-        let _res = self
+        let mut _res = self
             .rows
             .iter()
             .filter_map(|c| match **c.0 != "sqlite_sequence".to_string() {
@@ -187,7 +187,7 @@ impl Page {
                 _ => None,
             })
             .collect::<Vec<String>>();
-
+        _res.sort();
         print!("{}", _res.join(" "));
     }
 
