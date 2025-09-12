@@ -100,8 +100,6 @@ fn main() -> Result<()> {
                     for row in res.split('\n') {
                         println!("{}", row);
                     }
-
-                    // println!("{:#?}", response);
                 }
             }
         }
