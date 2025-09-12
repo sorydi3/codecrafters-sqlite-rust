@@ -3,7 +3,7 @@ use regex::Regex;
 pub fn parse_sql_(sql: String) -> Option<(Vec<String>, String, Option<String>)> {
     // Regex to capture columns and table name
     let re =
-        Regex::new(r"(?i)select\s+(?P<columns>[\w\s,\(\)\*]+)\s+from\s+(?P<table>\w+)(?:\s+where\s+(?P<condition>[\w\s=]+))?").unwrap();
+        Regex::new(r"(?i)select\s+(?P<columns>[\w\s,\(\)\*]+)\s+from\s+(?P<table>\w+)(?:\s+where\s+(?P<condition>[\w\s=\']+))?").unwrap();
 
     if let Some(caps) = re.captures(&sql) {
         let columns = caps.name("columns").unwrap().as_str();
