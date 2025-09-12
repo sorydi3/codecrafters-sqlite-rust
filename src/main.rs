@@ -18,8 +18,6 @@ fn get_column_data(
     db: &mut Arc<Db>,
     condition: &Option<String>,
 ) -> Result<String> {
-    //panic!("STOP HANDLE!!");
-    // Convert Vec<String> to Vec<&str> first
     let columns_refs: Vec<&str> = columns.iter().map(AsRef::as_ref).collect();
     let columns_names = schema_page.borrow_mut().display_table_colums(
         &mut db.get_file(),
@@ -38,7 +36,6 @@ fn get_column_data(
                     .map(|s| s.trim().replace("'", ""))
                     .collect::<Vec<_>>();
 
-                println!("COND: =>>> {:?}", cond);
                 let col_name = cond.get(0).unwrap();
                 let col_value = cond.get(1).unwrap();
                 let (index, colum_name) = columns
