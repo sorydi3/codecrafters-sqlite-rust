@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{bail, Ok, Result};
 use std::result::Result::Ok as OK;
-//use header::DatabaseHeader;
+
 mod db;
 use db::db::Db;
 mod parser;
