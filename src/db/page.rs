@@ -345,6 +345,25 @@ impl Page {
         Ok(res)
     }
 
+    pub fn order_row_columns(
+        &self,
+        columns: &[&str],
+        row: Vec<&(String, String)>,
+    ) -> Vec<(String, String)> {
+        let mut response: Vec<(String, String)> = vec![];
+
+        for column in columns {
+            let aux = row.iter().find(|c| c.0.eq(column));
+            match aux {
+                Some(res) => {
+                    response.push((*res).clone());
+                }
+                _ => (),
+            }
+        }
+        response
+    }
+
     fn filter_columns(
         &self,
         columns: &[&str],
@@ -353,9 +372,12 @@ impl Page {
         table[0]
             .iter()
             .map(|row| {
-                row.iter()
+                //return only columns especified in columns parameter
+                let res = row
+                    .iter()
                     .filter(|col| columns.as_ref().contains(&&col.0.as_str()))
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+                self.order_row_columns(columns, res)
             })
             .map(|row| row.iter().map(|col| col.1.clone()).collect::<Vec<String>>())
             .collect::<Vec<Vec<String>>>()
@@ -699,5 +721,40 @@ mod tests {
         actual_sorted.sort();
         expected_sorted.sort();
         assert_eq!(actual_sorted, expected_sorted);
+    }
+
+    #[test]
+    fn test_order_columns() {
+        let db = get_db_instance();
+        let schema_page = db.get_schema_page();
+
+        // Create a row with columns in random order
+        let unordered_row = vec![
+            ("description".to_string(), "great for snacking".to_string()),
+            ("name".to_string(), "Mandarin".to_string()),
+            ("id".to_string(), "1".to_string()),
+        ];
+
+        let unordered_row = unordered_row.iter().map(|cl| cl).collect::<Vec<_>>();
+
+        // Define desired column order
+        let column_order = &["name", "description", "id"];
+
+        // Expected ordered result
+        let expected_ordered = vec![
+            ("name".to_string(), "Mandarin".to_string()),
+            ("description".to_string(), "great for snacking".to_string()),
+            ("id".to_string(), "1".to_string()),
+        ];
+
+        // Get actual ordered result
+        let actual_ordered = schema_page
+            .borrow()
+            .order_row_columns(column_order, unordered_row);
+
+        assert_eq!(
+            actual_ordered, expected_ordered,
+            "Columns were not ordered correctly according to specified order"
+        );
     }
 }
