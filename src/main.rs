@@ -16,6 +16,7 @@ fn get_column_data(
     columns: Vec<String>,
     schema_page: Arc<RefCell<Page>>,
     db: &mut Arc<Db>,
+    condition: &Option<String>,
 ) -> Result<String> {
     //panic!("STOP HANDLE!!");
     // Convert Vec<String> to Vec<&str> first
@@ -28,6 +29,23 @@ fn get_column_data(
 
     let res = columns_names
         .iter()
+        .filter(|row| match condition {
+            // filter for where clause
+            Some(cond) => {
+                // only when where clause is available
+                let cond = cond.split("=").collect::<Vec<_>>();
+                let col_name = cond.get(0).unwrap();
+                let col_value = cond.get(1).unwrap();
+                let (index, colum_name) = columns
+                    .iter()
+                    .enumerate()
+                    .find(|c| c.1.eq(col_name))
+                    .unwrap();
+                assert!(colum_name.eq(col_name));
+                row[index].eq(col_value)
+            }
+            _ => true,
+        })
         .map(|c| c.join("|"))
         .collect::<Vec<_>>();
     let out = res.join("\n");
@@ -37,7 +55,7 @@ fn get_column_data(
 fn handle_sql_query(sql_query: String, db: &mut Arc<Db>) -> Result<String> {
     let is_select = sql_query.to_ascii_lowercase().starts_with("select");
     assert!(is_select); // must be a select
-    let (columns, table_name) = parse_sql_(sql_query).expect("FAILED TO PARSE SQL");
+    let (columns, table_name, condition) = parse_sql_(sql_query).expect("FAILED TO PARSE SQL");
     let count: String = "count(*)".into();
 
     let schema_page = db.get_schema_page();
@@ -58,9 +76,10 @@ fn handle_sql_query(sql_query: String, db: &mut Arc<Db>) -> Result<String> {
                     })
                     .collect();
 
-                get_column_data(table_name, columns, schema_page, db) // display all columns
+                get_column_data(table_name, columns, schema_page, db, &condition)
+                // display all columns
             }
-            _ => get_column_data(table_name, columns, schema_page, db), // just for some columns
+            _ => get_column_data(table_name, columns, schema_page, db, &condition), // just for some columns
         },
     }
 }
