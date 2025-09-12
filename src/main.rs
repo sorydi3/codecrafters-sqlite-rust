@@ -33,7 +33,12 @@ fn get_column_data(
             // filter for where clause
             Some(cond) => {
                 // only when where clause is available
-                let cond = cond.split("=").collect::<Vec<_>>();
+                let cond = cond
+                    .split("=")
+                    .map(|s| s.trim().replace("'", ""))
+                    .collect::<Vec<_>>();
+
+                println!("COND: =>>> {:?}", cond);
                 let col_name = cond.get(0).unwrap();
                 let col_value = cond.get(1).unwrap();
                 let (index, colum_name) = columns
