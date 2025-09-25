@@ -1,4 +1,5 @@
 use crate::db::header::HEADER_BYTES_SIZE;
+use core::panic;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
@@ -90,15 +91,26 @@ impl Page {
     }
 
     #[allow(dead_code)]
-    pub fn get_rows_colum_names(&self, _table_name: String) -> Vec<Vec<String>> {
+    pub fn get_rows_colum_names(&self, _table_name: String, schema: bool) -> Vec<Vec<String>> {
         match self.sql_schema.eq("") {
-            true => {
-                let page = self
-                    .rows
-                    .get(&_table_name)
-                    .expect("Page::get_rows_colum_names():GET TABLE NAME FAILED!!");
-                page.1.borrow().get_rows_colum_names(_table_name)
-            }
+            true => match schema {
+                true => {
+                    vec![
+                        vec!["type".into(), "text".into()],
+                        vec!["name".into(), "text".into()],
+                        vec!["tbl_name".into(), "text".into()],
+                        vec!["rootpage".into(), "integer".into()],
+                        vec!["sql".into(), "text".into()],
+                    ]
+                }
+                _ => {
+                    let page = self
+                        .rows
+                        .get(&_table_name)
+                        .expect("Page::get_rows_colum_names():GET TABLE NAME FAILED!!");
+                    page.1.borrow().get_rows_colum_names(_table_name, false)
+                }
+            },
             _ => self
                 .sql_schema
                 .split("(")
@@ -132,13 +144,33 @@ impl Page {
     }
 
     fn add_page(&mut self, file: &mut Arc<File>, row_offset: u16, page_size: usize) -> () {
-        let (table_name, table_number, sql_schema) = self
-            .get_cell_value_schema_page(file, row_offset)
-            .expect("FAILED TO READ CELL VALUE");
+        let row_data = self.parse_row_data(row_offset as u64, " ".into(), file, true);
+        let table_number = &row_data
+            .iter()
+            .find(|col| col.0.eq("rootpage"))
+            .unwrap()
+            .1
+            .parse::<usize>()
+            .unwrap();
+
+        let table_name = row_data
+            .iter()
+            .find(|col| col.0.eq("name"))
+            .unwrap()
+            .1
+            .clone();
+
+        let sql = row_data
+            .iter()
+            .find(|col| col.0.eq("sql"))
+            .unwrap()
+            .1
+            .clone();
+        //println!("row_data---->: {:?}", row_data);
 
         self.rows.entry(table_name).or_insert(Arc::new((
-            table_number,
-            RefCell::new(Page::new_(file, table_number, page_size, sql_schema)),
+            *table_number,
+            RefCell::new(Page::new_(file, *table_number, page_size, sql)),
         )));
     }
 
@@ -155,7 +187,6 @@ impl Page {
                     // iterate throught the cells of the schema table
                     let mut buffer: [u8; 2] = [0; 2];
                     file.read_exact(&mut buffer).expect("READ EXACT FAILED!!");
-
                     let row_offset = u16::from_be_bytes([buffer[0], buffer[1]]);
 
                     self.add_page(file, row_offset, page_size);
@@ -210,6 +241,7 @@ impl Page {
         file.take(9)
             .read(&mut payload)
             .expect("READ FILED VARINT BUFFER");
+
         let mut res = vec![];
         let mut it = 0;
         let mut value: u64 = 0;
@@ -226,11 +258,10 @@ impl Page {
             }
             it += 1;
         }
-
         Some((res, value as usize))
     }
 
-    fn get_size_from_varint(&self, serialtype: u8) -> (RecordFieldType, usize) {
+    fn get_size_from_varint(&self, serialtype: usize) -> (RecordFieldType, usize) {
         let (field_type, field_size) = match serialtype {
             0 => (RecordFieldType::Null, 0),
             1 => (RecordFieldType::I8, 1),
@@ -293,57 +324,6 @@ impl Page {
             _ => None,
         }
     }
-    fn get_cell_value_schema_page(
-        // get the table_name_schema
-        &mut self,
-        file: &mut Arc<File>,
-        cell_offset: u16,
-    ) -> Result<(String, usize, String), anyhow::Error> {
-        let mut offset: usize = cell_offset as usize;
-
-        let mut payload_size_value = 0;
-        let mut display_values = || {
-            if let Some((bytes, value)) = self.decode_var_int(offset as usize, file) {
-                payload_size_value = value;
-                offset += bytes.len();
-                (payload_size_value, offset)
-            } else {
-                (0, 0)
-            }
-        };
-
-        display_values(); // Size of the record (varint)
-        display_values(); //The rowid (safe to ignore)
-        display_values(); // Size of record header (varint
-
-        let mut size = self.get_size_from_varint(display_values().0 as u8).1;
-        size += self.get_size_from_varint(display_values().0 as u8).1;
-
-        let (_, size_schema_table_name) = self.get_size_from_varint(display_values().0 as u8);
-
-        let (_, size_rootpage) = self.get_size_from_varint(display_values().0 as u8);
-
-        let (schema_sql_size, schema_sql_offset) = display_values();
-        let tbl_name_offset = schema_sql_offset + size;
-
-        let res = self.read_bytes_to_utf8(file, tbl_name_offset, size_schema_table_name);
-
-        let offset_rootpage_pagenumber = tbl_name_offset + size_schema_table_name;
-
-        let page_number = self
-            .read_bytes_to_utf8(file, offset_rootpage_pagenumber, size_rootpage)
-            .parse::<u16>()
-            .unwrap();
-
-        let offset_sql_sqlite_schema = offset_rootpage_pagenumber + size_rootpage;
-        let sql_statement = self.read_bytes_to_utf8(
-            file,
-            offset_sql_sqlite_schema,
-            self.get_size_from_varint(schema_sql_size as u8).1,
-        );
-        let res: (String, usize, String) = (res, page_number as usize, sql_statement);
-        Ok(res)
-    }
 
     pub fn order_row_columns(
         &self,
@@ -405,17 +385,55 @@ impl Page {
         resp
     }
 
+    pub fn get_varints_byte_array(
+        &self,
+        file: &mut Arc<File>,
+        byte_array_header_size: usize,
+        row_offset: u64,
+    ) -> Vec<usize> {
+        file.seek(std::io::SeekFrom::Start(row_offset))
+            .expect("FAILED TO SEEK!!");
+
+        let mut buffer_header: Vec<u8> = vec![];
+
+        file.read_exact(&mut buffer_header)
+            .expect("failed to read!!");
+
+        let mut current_bytes_reads = 0;
+        let mut end = false;
+        let mut offset: usize = row_offset as usize;
+        let mut response: Vec<usize> = vec![];
+        while !end {
+            let res = self.decode_var_int(offset, file);
+            response.push(res.clone().unwrap().1);
+            current_bytes_reads += res.clone().unwrap().0.len();
+
+            if current_bytes_reads < byte_array_header_size {
+                offset += res.clone().unwrap().0.len();
+                file.seek(std::io::SeekFrom::Start(offset as u64))
+                    .expect("FAILED TO SEEK!!");
+            } else {
+                end = true;
+            }
+        }
+
+        response
+    }
+
     pub fn parse_row_data(
         &self,
         row_offset: u64,
         table_name: String,
         file: &mut Arc<File>,
+        schema: bool,
     ) -> Vec<(String, String)> {
-        let page_offset = self.offset as u64;
+        let page_offset = match self.sql_schema.eq("") {
+            true => 0,
+            _ => self.offset as u64,
+        };
 
         let row_offset_relative_current_page = (page_offset + row_offset) as usize;
         let row_size = self.decode_var_int(row_offset_relative_current_page, file);
-
         let row_id_offeset = row_offset_relative_current_page + row_size.as_ref().unwrap().0.len(); // offset row id
         let row_id = self.decode_var_int(row_id_offeset, file);
 
@@ -426,30 +444,33 @@ impl Page {
             .as_ref()
             .unwrap()
             .1;
-        let mut buffer_header_byter_array_cell_serial_types = vec![0; size_header_byte_array];
+        //let mut buffer_header_byter_array_cell_serial_types = vec![0; size_header_byte_array];
 
         file.seek(std::io::SeekFrom::Start(
             offset_size_header_byte_array as u64,
         ))
         .expect(format!("Failed to seek to offset{row_offset:?}").as_str());
+        let resp = self.get_varints_byte_array(
+            file,
+            size_header_byte_array,
+            offset_size_header_byte_array as u64,
+        );
 
-        file.read_exact(&mut buffer_header_byter_array_cell_serial_types)
-            .expect("READ EXACT FAILED!!");
-
-        let sizes_fields = buffer_header_byter_array_cell_serial_types
+        let sizes_fields = resp
             .iter()
             .skip(1)
             .map(|value| self.get_size_from_varint(*value).1)
             .collect::<Vec<_>>();
+
         // heady + data =  row_size
+
         assert!(
-            sizes_fields.iter().sum::<usize>() + buffer_header_byter_array_cell_serial_types.len()
+            sizes_fields.iter().sum::<usize>() + size_header_byte_array
                 == row_size.as_ref().unwrap().1
         ); // check that the header size and the sum of fields is equal to the row size.
 
         // seek to offset data
-        let data_offset_byte_array =
-            offset_size_header_byte_array + buffer_header_byter_array_cell_serial_types.len();
+        let data_offset_byte_array = offset_size_header_byte_array + size_header_byte_array;
         file.seek(std::io::SeekFrom::Start(data_offset_byte_array as u64))
             .expect("seek failed");
 
@@ -470,9 +491,23 @@ impl Page {
                 }
             })
             .collect();
-        let column_names = self.get_rows_colum_names(table_name.clone());
+
+        let column_names = self.get_rows_colum_names(table_name.clone(), schema);
+
         assert!(row_data.len() == column_names.len()); // assert colum data length and colum types are equal
-                                                       // join colum names and data of the current row
+
+        /*
+         println!(
+            "ROW_SIZE {:?} ROW_ID {:?} HEADER_SIZE: {:?} BUFFER_S_TYPES: {:?} SIZE_FIEDLS: {:?}, ROW_DATA: {:?}",
+            row_size,
+            row_id,
+            size_header_byte_array,
+            resp,
+            sizes_fields,
+            row_data
+        );
+         */
+        // join colum names and data of the current row
         let res = column_names
             .iter()
             .zip(row_data.iter())
@@ -482,55 +517,134 @@ impl Page {
         res
     }
 
+    pub fn add_page_to_rows(
+        &mut self,
+        row_offset: u64,
+        file: &mut Arc<File>,
+    ) -> Vec<(String, String)> {
+        //
+
+        file.seek(std::io::SeekFrom::Start(self.offset as u64))
+            .expect("seeking failed!!"); //seek to the start of the paage
+
+        file.seek_relative(row_offset as i64)
+            .expect("FAILED TO SEEK!!");
+
+        let mut row_buffer = vec![0u8; 5];
+
+        file.read_exact(&mut row_buffer)
+            .expect("READ EXACT FAILED!!");
+
+        let page_number =
+            u32::from_be_bytes([row_buffer[0], row_buffer[1], row_buffer[2], row_buffer[3]]);
+
+        let _row_id = u8::from_be_bytes([row_buffer[4]]);
+
+        self.rows
+            .entry(format!("{page_number}"))
+            .or_insert(Arc::new((
+                page_number as usize,
+                RefCell::new(Page::new_(
+                    file,
+                    page_number as usize,
+                    4096,
+                    self.sql_schema.clone(),
+                )),
+            )));
+        vec![("".into(), "".into())]
+    }
+
     fn parse_page(
         &mut self,
         table_name: String,
         file: &mut Arc<File>,
     ) -> Vec<Vec<(String, String)>> {
-        let offset_page_header = 8;
-        file.seek(std::io::SeekFrom::Start(
-            (self.offset + offset_page_header) as u64,
-        ))
-        .expect("SEEK FAILED!!"); // seek to offset page
+        let offset_page_header = 8; // offset for leaf pages
+
+        let size_cell_pointer = 2;
+        match self.type_page {
+            PageType::INTERIORINDEX => panic!("INTERIOR INDEX NOT IMPLEMENTED YET"),
+            PageType::INTERIORTABLE => {
+                //
+                //root page
+
+                let offset_page_header = 12;
+
+                file.seek(std::io::SeekFrom::Start(
+                    (self.offset + offset_page_header) as u64,
+                ))
+                .expect("SEEK FAILED!!");
+
+                let mut buffer = vec![0u8; (self.table_count * size_cell_pointer) as usize];
+                file.read_exact(&mut buffer).expect("READ EXACT FAILED!!");
+
+                let _res: Vec<Vec<(String, String)>> = buffer
+                    .chunks(2) // cell size
+                    .map(|cell| u16::from_be_bytes([cell[0], cell[1]]))
+                    .map(|offeset_cell| self.add_page_to_rows(offeset_cell as u64, file))
+                    .collect();
+
+                let res_ = self
+                    .rows
+                    .iter_mut()
+                    .flat_map(|data| {
+                        let (_, page) = data;
+                        page.1.borrow_mut().parse_page(table_name.clone(), file)
+                        //println!("table_data {:?}",data);
+                    })
+                    .collect::<Vec<_>>();
+                res_
+            }
+            PageType::LEAFTABLE => {
+                file.seek(std::io::SeekFrom::Start(
+                    (self.offset + offset_page_header) as u64,
+                ))
+                .expect("SEEK FAILED!!");
+                let mut buffer = vec![0u8; (self.table_count * size_cell_pointer) as usize];
+                file.read_exact(&mut buffer).expect("READ EXACT FAILED!!");
+                //seek from the start of the page
+                let res: Vec<Vec<(String, String)>> = buffer
+                    .chunks(2) // cell size
+                    .map(|cell| u16::from_be_bytes([cell[0], cell[1]]))
+                    .map(|offeset_cell| {
+                        self.parse_row_data(offeset_cell as u64, table_name.clone(), file, false)
+                    })
+                    .collect();
+                res
+            }
+            PageType::LEAFINDEX => panic!("LEAD INDEX NOT IMPLEMENTED YET"),
+            PageType::UNKNOWNTYPE => panic!("unknow page type!! File might be corrupted!!"),
+        }
 
         //TODO -> CHECK FOR PAGE TYPE FOR NON LEAF PAGES THERE MIGHT BE RIGHT POINTER BEFORE THE CELLS START.
         // USE A MATCH TO CHECK THE TYPE OF THE PAGE
-
-        let size_cell_pointer = 2;
-        let mut buffer = vec![0u8; (self.table_count * size_cell_pointer) as usize];
-        file.read_exact(&mut buffer).expect("READ EXACT FAILED!!");
-        //seek from the start of the page
-        let res: Vec<Vec<(String, String)>> = buffer
-            .chunks(2) // cell size
-            .map(|cell| u16::from_be_bytes([cell[0], cell[1]]))
-            .map(|offeset_cell| self.parse_row_data(offeset_cell as u64, table_name.clone(), file))
-            .collect();
-        res
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use super::*;
     use crate::db::db::Db;
 
-    fn get_db_instance() -> Db {
+    fn get_db_instance(db_name: String) -> Db {
         let db_file_path: String =
-            "/Users/ollaid/codecrafters/codecrafters-sqlite-rust/sample.db".into();
+            format!("/Users/ollaid/codecrafters/codecrafters-sqlite-rust/{db_name}.db");
         let db = Db::new(db_file_path.clone());
         db
     }
 
     #[test]
     fn test_table_count_schema_page() {
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
         let page_schema_table_count = db.get_table_count_schema_page();
         assert_eq!(page_schema_table_count, 3);
     }
 
     #[test]
     fn test_cells_filled_schema_page() {
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
         let schema = &db.get_schema_page();
         let cells_schema_page = &schema.borrow().rows;
         assert!(cells_schema_page.len() > 0);
@@ -539,7 +653,7 @@ mod tests {
     #[test]
     fn test_cells_content() {
         let res: &str = "apples sqlite_sequence oranges";
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
         let schema = &db.get_schema_page();
         let cells_schema_page = &schema.borrow().rows;
         assert!(cells_schema_page.len() == 3);
@@ -549,7 +663,7 @@ mod tests {
     #[test]
     fn test_schema_test_page_type() {
         let res_page_type: PageType = PageType::LEAFTABLE;
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
         let schema = &db.get_schema_page();
         let page_type: &PageType = &schema.borrow().type_page;
         assert!(*page_type == res_page_type);
@@ -557,7 +671,7 @@ mod tests {
 
     #[test]
     fn test_get_page_offset_() {
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
         assert!(Page::get_offset_page(1, db.get_page_size()) == 100);
         assert!(Page::get_offset_page(2, db.get_page_size()) == 4096);
         assert!(Page::get_offset_page(3, db.get_page_size()) == 8192);
@@ -566,7 +680,7 @@ mod tests {
 
     #[test]
     fn test_cells_counts_for_squema_pages() {
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
         let rows = vec![("oranges", 6), ("apples", 4)];
         rows.iter().for_each(|table| {
             if let Some(count_cells) = &db.get_schema_page().borrow().rows.get(table.0) {
@@ -584,7 +698,7 @@ mod tests {
 
     #[test]
     fn get_column_names_db_sample() {
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
 
         let table_name: String = "oranges".into();
 
@@ -610,7 +724,7 @@ mod tests {
             .unwrap()
             .1
             .borrow()
-            .get_rows_colum_names(table_name);
+            .get_rows_colum_names(table_name, false);
         println!("{:?}", col_names_db);
 
         assert!(col_names_db.iter().eq(res.iter()));
@@ -620,7 +734,7 @@ mod tests {
     fn test_decode_varint() {
         let offset_oranges_cell_1_size_record = 3779;
         let offset_oranges_cell_sql_squema = 3786;
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
         let mut file = db.get_file();
         let schema_page = db.get_schema_page();
         let (bytes, value) = schema_page
@@ -642,7 +756,7 @@ mod tests {
     #[test]
     fn test_get_size_from_varint() {
         let offset_oranges_cell_sql_squema = 3786;
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
         let mut file = db.get_file();
         let schema_page = db.get_schema_page();
         let size = schema_page.borrow().get_size_from_varint(
@@ -650,14 +764,14 @@ mod tests {
                 .borrow()
                 .decode_var_int(offset_oranges_cell_sql_squema, &mut file)
                 .expect("DECODE VARINT FAILED")
-                .1 as u8,
+                .1,
         );
         assert_eq!(size.1, 93);
     }
 
     #[test]
     fn test_display_columns_given_2_columns() {
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
         let schema_page = db.get_schema_page();
         let mut file: Arc<File> = db.get_file();
         let table_name = "oranges";
@@ -696,7 +810,7 @@ mod tests {
 
     #[test]
     fn test_display_columns_given_1_column() {
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
         let schema_page = db.get_schema_page();
         let mut file: Arc<File> = db.get_file();
         let table_name = "oranges";
@@ -725,7 +839,7 @@ mod tests {
 
     #[test]
     fn test_order_columns() {
-        let db = get_db_instance();
+        let db = get_db_instance("sample".into());
         let schema_page = db.get_schema_page();
 
         // Create a row with columns in random order
@@ -756,5 +870,18 @@ mod tests {
             actual_ordered, expected_ordered,
             "Columns were not ordered correctly according to specified order"
         );
+    }
+    #[test]
+    fn test_get_varints_byte_array() {
+        let db = get_db_instance("superheroes".into());
+        let file = &mut db.get_file();
+        let schema_page = db.get_schema_page();
+        let page = schema_page.borrow();
+        let row_offset = 3728;
+        let byte_array_header_size = 7usize;
+        let actual_res: Vec<usize> =
+            page.get_varints_byte_array(file, byte_array_header_size, row_offset);
+        let expected = vec![7, 17, 23, 23, 1, 193];
+        assert!(actual_res.iter().eq(expected.iter()))
     }
 }
