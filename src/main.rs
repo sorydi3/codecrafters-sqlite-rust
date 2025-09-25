@@ -70,7 +70,7 @@ fn handle_sql_query(sql_query: String, db: &mut Arc<Db>) -> Result<String> {
             true => {
                 let columns: Vec<String> = schema_page
                     .borrow()
-                    .get_rows_colum_names(table_name.clone())
+                    .get_rows_colum_names(table_name.clone(), false)
                     .iter()
                     .map(|c| {
                         let col = c[0].clone();
