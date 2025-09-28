@@ -329,8 +329,7 @@ impl Page {
         columns: &[&str],
         row: Vec<&(String, String)>,
     ) -> Vec<(String, String)> {
-        // order the columns to match the select
-
+        //order the columns to match the select
         let mut response: Vec<(String, String)> = vec![];
 
         for column in columns {
