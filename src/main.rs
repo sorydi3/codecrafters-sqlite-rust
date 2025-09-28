@@ -19,13 +19,11 @@ fn get_column_data(
     condition: &Option<String>,
 ) -> Result<String> {
     let columns_refs: Vec<&str> = columns.iter().map(AsRef::as_ref).collect();
-    let columns_names = schema_page.borrow_mut().display_table_colums(
-        &mut db.get_file(),
-        columns_refs.as_slice(),
-        table_name.clone(),
-    );
+    let columns_names = schema_page
+        .borrow_mut()
+        .display_table_colums(&mut db.get_file(), table_name.clone());
 
-    let res = columns_names
+    let res = columns_names[0]
         .iter()
         .filter(|row| match condition {
             // filter for where clause
@@ -38,19 +36,23 @@ fn get_column_data(
 
                 let col_name = cond.get(0).unwrap();
                 let col_value = cond.get(1).unwrap();
-                let (index, colum_name) = columns
+
+                let (index, colum_name) = row
                     .iter()
                     .enumerate()
-                    .find(|c| c.1.eq(col_name))
+                    .find(|c| c.1 .0.eq(col_name))
                     .unwrap();
-                assert!(colum_name.eq(col_name));
-                row[index].eq(col_value)
+                assert!(colum_name.0.eq(col_name));
+                row[index].1.eq(col_value)
             }
             _ => true,
         })
-        .map(|c| c.join("|"))
+        .map(|row| row.clone())
         .collect::<Vec<_>>();
-    let out = res.join("\n");
+
+    let filtered = Page::filter_columns(&columns_refs.as_ref(), res);
+    let resp = filtered.iter().map(|c| c.join("|")).collect::<Vec<_>>();
+    let out = resp.join("\n");
     Ok(out)
 }
 

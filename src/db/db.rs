@@ -52,10 +52,10 @@ impl Db {
     }
 
     #[allow(dead_code)]
-    pub fn display_columns(&mut self, columns: &[&str], table_name: String) {
+    pub fn display_columns(&mut self, _columns: &[&str], table_name: String) {
         self.schema_page
             .borrow_mut()
-            .display_table_colums(&mut self.file, columns, table_name);
+            .display_table_colums(&mut self.file, table_name);
     }
 
     #[allow(dead_code)]
