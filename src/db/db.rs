@@ -55,7 +55,7 @@ impl Db {
     pub fn display_columns(&mut self, _columns: &[&str], table_name: String) {
         self.schema_page
             .borrow_mut()
-            .display_table_colums(&mut self.file, table_name);
+            .get_table_data(&mut self.file, table_name);
     }
 
     #[allow(dead_code)]
