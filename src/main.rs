@@ -11,6 +11,22 @@ use parser::parse_sql_;
 use crate::db::page::Page;
 use std::cell::RefCell;
 
+fn search_by_index(condition: &Option<String>) -> bool {
+    match condition {
+        Some(cond) => {
+            let vec = cond
+                .split("=")
+                .map(|s| s.trim().replace("'", ""))
+                .collect::<Vec<_>>();
+
+            let col_name = vec.get(0).unwrap();
+
+            col_name.eq("country")
+        }
+        _ => false,
+    }
+}
+
 fn get_column_data(
     table_name: String,
     columns: Vec<String>,
@@ -19,9 +35,14 @@ fn get_column_data(
     condition: &Option<String>,
 ) -> Result<String> {
     let columns_refs: Vec<&str> = columns.iter().map(AsRef::as_ref).collect();
-    let columns_names = schema_page
-        .borrow_mut()
-        .display_table_colums(&mut db.get_file(), table_name.clone());
+    let columns_names = match search_by_index(condition) {
+        true => {
+            todo!()
+        }
+        _ => schema_page
+            .borrow_mut()
+            .get_table_data(&mut db.get_file(), table_name.clone()),
+    };
 
     let res = columns_names[0]
         .iter()
@@ -63,6 +84,7 @@ fn handle_sql_query(sql_query: String, db: &mut Arc<Db>) -> Result<String> {
     let count: String = "count(*)".into();
 
     let schema_page = db.get_schema_page();
+    println!("GOT SQUEMA PAGE!! {:?}", table_name);
     match columns.join("").to_ascii_lowercase().contains(&count) {
         true => {
             let res = schema_page.borrow().get_cell_count_page_schema(table_name);
@@ -83,7 +105,10 @@ fn handle_sql_query(sql_query: String, db: &mut Arc<Db>) -> Result<String> {
                 get_column_data(table_name, columns, schema_page, db, &condition)
                 // display all columns
             }
-            _ => get_column_data(table_name, columns, schema_page, db, &condition), // just for some columns
+            _ => {
+                let res = get_column_data(table_name, columns, schema_page, db, &condition);
+                Ok("".into())
+            } // just for some columns
         },
     }
 }
