@@ -398,7 +398,7 @@ impl Page {
             .collect::<Vec<Vec<String>>>()
     }
 
-    pub fn display_table_colums(
+    pub fn get_table_data(
         &mut self,
         file: &mut Arc<File>,
         table_name: String,
@@ -736,7 +736,12 @@ impl Page {
         row_offset: u64,
         file: &mut Arc<File>,
     ) -> Vec<(String, String)> {
-        let (_, page) = self.get_page(row_offset, file, (PageType::UNKNOWNTYPE, 0), "".into());
+        let (_, page) = self.get_page(
+            row_offset,
+            file,
+            (PageType::UNKNOWNTYPE, 0),
+            self.sql_schema.clone(),
+        );
         let page_number = page.0;
         self.rows.entry(format!("{page_number}")).or_insert(page);
         vec![("".into(), "".into())]
@@ -747,6 +752,7 @@ impl Page {
         table_name: String,
         file: &mut Arc<File>,
     ) -> Vec<Vec<(String, String)>> {
+        println!("ATEMPTING TO PARSE COMPANIES PAGE!!");
         let offset_page_header = 8; // offset for leaf pages
 
         let size_cell_pointer = 2;
@@ -756,12 +762,16 @@ impl Page {
                 //
                 //root page
 
+                println!("INTERIORPAGE");
+
                 let offset_page_header = 12;
 
                 file.seek(std::io::SeekFrom::Start(
                     (self.offset + offset_page_header) as u64,
                 ))
                 .expect("SEEK FAILED!!");
+
+                println!("1 INTERIORPAGE");
 
                 let mut buffer = vec![0u8; (self.table_count * size_cell_pointer) as usize];
                 file.read_exact(&mut buffer).expect("READ EXACT FAILED!!");
@@ -772,6 +782,10 @@ impl Page {
                     .map(|offeset_cell| self.add_page_to_rows(offeset_cell as u64, file))
                     .collect();
 
+                //println!("PAGES {:?}",_res);
+
+                println!("2 INTERIORPAGE");
+
                 let res_ = self
                     .rows
                     .iter_mut()
@@ -781,15 +795,21 @@ impl Page {
                         //println!("table_data {:?}",data);
                     })
                     .collect::<Vec<_>>();
+
+                println!("3 INTERIORPAGE");
+
+                println!("PARSED_PAGE {:?}", res_);
                 res_
             }
             PageType::LEAFTABLE | PageType::LEAFINDEX => {
+                println!("IN A LEAF TABLE!!!");
                 file.seek(std::io::SeekFrom::Start(
                     (self.offset + offset_page_header) as u64,
                 ))
                 .expect("SEEK FAILED!!");
                 let mut buffer = vec![0u8; (self.table_count * size_cell_pointer) as usize];
                 file.read_exact(&mut buffer).expect("READ EXACT FAILED!!");
+                println!(" 1 IN A LEAF TABLE!!!");
                 //seek from the start of the page
                 let res: Vec<Vec<(String, String)>> = buffer
                     .chunks(2) // cell size
@@ -809,7 +829,7 @@ impl Page {
                             vec![(res[0].clone(), res[1].clone())]
                         }
                         PageType::LEAFTABLE => {
-                            //println!("USING PARSE_ROW_DATA");
+                            println!("USING PARSE_ROW_DATA");
                             self.parse_row_data(
                                 offeset_cell as u64,
                                 table_name.clone(),
@@ -830,12 +850,12 @@ impl Page {
         // USE A MATCH TO CHECK THE TYPE OF THE PAGE
     }
 
-    fn search_index(
+    fn search_index_country(
         &self,
         file: &mut Arc<File>,
         (table_name, index_name): (String, String),
         key: String,
-    ) -> () {
+    ) -> Vec<Vec<(String, String)>> {
         //
         let index_name: String = index_name;
         let search_name = &key;
@@ -860,33 +880,48 @@ impl Page {
             file,
             Arc::new(vec![]),
         );
+        let final_response = ids_list
+            .iter()
+            .map(|id| {
+                let row: Vec<(String, String)> = self.i_search_index(
+                    &table_page.1.borrow(),
+                    id.1.as_str(),
+                    "".into(),
+                    file,
+                    Arc::new(vec![]),
+                );
+                row
+            })
+            .collect::<Vec<_>>();
 
-        println!(
-            "IDS: {:?}",
-            ids_list.iter().map(|c| c.1.clone()).collect::<Vec<_>>()
+        final_response
+    }
+
+    fn search_by_id(
+        &self,
+        file: &mut Arc<File>,
+        table_name: String,
+        key: String,
+    ) -> Vec<(String, String)> {
+        //
+        let search_name = &key;
+
+        let table_page = self
+            .rows
+            .iter()
+            .find(|(name, _)| (*name).eq(&table_name))
+            .unwrap()
+            .1;
+
+        let row: Vec<(String, String)> = self.i_search_index(
+            &table_page.1.borrow(),
+            &search_name,
+            "".into(),
+            file,
+            Arc::new(vec![]),
         );
-        println!("----------RESPONSE: --------");
-        let final_response = ids_list.iter().for_each(|id| {
-            println!(
-                "<<<INIT>>>----------------SEARCHING KEY: {}---------------",
-                id.1.as_str()
-            );
-            let row: Vec<(String, String)> = self.i_search_index(
-                &table_page.1.borrow(),
-                id.1.as_str(),
-                "".into(),
-                file,
-                Arc::new(vec![]),
-            );
 
-            println!("RESPONSE:{:?}", row);
-            println!(
-                "<<DONE>>----------------SEARCHING KEY: {}---------------",
-                id.1.as_str()
-            );
-        });
-
-        println!("----------RESPONSE: --------");
+        row
     }
 
     fn page_number(&self) -> usize {
@@ -1222,7 +1257,7 @@ mod tests {
     fn test_table_count_schema_page() {
         let db = get_db_instance("sample".into());
         let page_schema_table_count = db.get_table_count_schema_page();
-        assert_eq!(page_schema_table_count, 3);
+        assert_eq!(page_schema_table_count, 4);
     }
 
     #[test]
@@ -1235,11 +1270,11 @@ mod tests {
 
     #[test]
     fn test_cells_content() {
-        let res: &str = "apples sqlite_sequence oranges";
+        let res: &str = "apples sqlite_sequence oranges name_index";
         let db = get_db_instance("sample".into());
         let schema = &db.get_schema_page();
         let cells_schema_page = &schema.borrow().rows;
-        assert!(cells_schema_page.len() == 3);
+        assert!(cells_schema_page.len() == 4);
         assert!(cells_schema_page.iter().all(|c| res.contains(c.0)));
     }
 
@@ -1380,7 +1415,7 @@ mod tests {
         ];
         let actual_rows = schema_page
             .borrow_mut()
-            .display_table_colums(&mut file, table_name.to_string());
+            .get_table_data(&mut file, table_name.to_string());
 
         let mut actual_sorted = actual_rows.clone();
         let mut expected_sorted = expected_rows.clone();
@@ -1408,7 +1443,7 @@ mod tests {
 
         let actual_rows = schema_page
             .borrow_mut()
-            .display_table_colums(&mut file, table_name.to_string());
+            .get_table_data(&mut file, table_name.to_string());
 
         let mut actual_sorted = actual_rows.clone();
         let mut expected_sorted = expected_rows.clone();
@@ -1473,13 +1508,23 @@ mod tests {
         let file = &mut db.get_file();
         let schema_page = db.get_schema_page();
         let page = schema_page.borrow();
-        page.search_index(
+        let res = page.search_index_country(
             file,
             ("oranges".into(), "name_index".into()),
             "Mandarin".into(),
         );
 
-        assert!(false);
+        // Expect at least one matching row and that it contains name and description for Mandarin
+        assert_eq!(res.len(), 1, "Expected exactly one row for 'Mandarin'");
+        let row = &res[0];
+        let has_name = row.iter().any(|(k, v)| k == "name" && v == "Mandarin");
+        let has_description = row
+            .iter()
+            .any(|(k, v)| k == "description" && v == "great for snacking");
+        assert!(
+            has_name && has_description,
+            "Row did not contain expected name/description"
+        );
     }
 
     #[test]
@@ -1489,24 +1534,43 @@ mod tests {
         let file = &mut db.get_file();
         let schema_page = db.get_schema_page();
         let page = schema_page.borrow();
-        page.search_index(
+        let res = page.search_index_country(
             file,
             ("companies".into(), "idx_companies_country".into()),
             "eritrea".into(),
         );
-        assert!(false);
+
+        // Expect at least one matching row where the country column equals "eritrea"
+        assert!(
+            !res.is_empty(),
+            "Expected at least one row for country 'eritrea'"
+        );
+        let found = res.iter().any(|row| {
+            row.iter()
+                .any(|(k, v)| k == "country" && v.to_lowercase() == "eritrea")
+        });
+        assert!(found, "No row with country = 'eritrea' found");
     }
 
     #[test]
-    fn test_covert_bytes_to_usize() {
-        let db = get_db_instance("companies".into());
+    fn test_search_by_id() {
+        let db = get_db_instance("sample".into());
         let file = &mut db.get_file();
         let schema_page = db.get_schema_page();
         let page = schema_page.borrow();
-        let offset = 16381usize;
-        file.seek(std::io::SeekFrom::Start(offset as u64))
-            .expect("Seek failed!!");
-        let res = page.read_bytes_to_usize(file, offset, 3);
-        assert_eq!(res, 22251);
+
+        // use search_by_id instead of calling i_search_index directly
+        let result = page.search_by_id(file, "oranges".into(), "1".into());
+
+        // Expect at least the name and description columns for id = 1
+        assert!(!result.is_empty(), "Expected a row for id = 1");
+        let has_name = result.iter().any(|(k, v)| k == "name" && v == "Mandarin");
+        let has_description = result
+            .iter()
+            .any(|(k, v)| k == "description" && v == "great for snacking");
+        assert!(
+            has_name && has_description,
+            "Row for id=1 did not contain expected name/description"
+        );
     }
 }
