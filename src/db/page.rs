@@ -1,10 +1,5 @@
 use anyhow::bail;
-use bytes::buf;
-use nom::bits::bytes;
-use nom::combinator::Fail;
-
 use crate::db::header::HEADER_BYTES_SIZE;
-use crate::db::page;
 use core::panic;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -319,7 +314,7 @@ impl Page {
             }
             _ => {
                 //
-                println!("TYPE: {:?}", serialtype);
+                //println!("TYPE: {:?}", serialtype);
                 panic!("NOT SUPORTED TYPE")
             }
         };
@@ -415,6 +410,7 @@ impl Page {
                     .parse_page(table_name.clone(), file)
             })
             .collect();
+
         table
     }
 
@@ -752,7 +748,6 @@ impl Page {
         table_name: String,
         file: &mut Arc<File>,
     ) -> Vec<Vec<(String, String)>> {
-        println!("ATEMPTING TO PARSE COMPANIES PAGE!!");
         let offset_page_header = 8; // offset for leaf pages
 
         let size_cell_pointer = 2;
@@ -762,7 +757,6 @@ impl Page {
                 //
                 //root page
 
-                println!("INTERIORPAGE");
 
                 let offset_page_header = 12;
 
@@ -771,7 +765,6 @@ impl Page {
                 ))
                 .expect("SEEK FAILED!!");
 
-                println!("1 INTERIORPAGE");
 
                 let mut buffer = vec![0u8; (self.table_count * size_cell_pointer) as usize];
                 file.read_exact(&mut buffer).expect("READ EXACT FAILED!!");
@@ -784,7 +777,6 @@ impl Page {
 
                 //println!("PAGES {:?}",_res);
 
-                println!("2 INTERIORPAGE");
 
                 let res_ = self
                     .rows
@@ -796,20 +788,16 @@ impl Page {
                     })
                     .collect::<Vec<_>>();
 
-                println!("3 INTERIORPAGE");
 
-                println!("PARSED_PAGE {:?}", res_);
                 res_
             }
             PageType::LEAFTABLE | PageType::LEAFINDEX => {
-                println!("IN A LEAF TABLE!!!");
                 file.seek(std::io::SeekFrom::Start(
                     (self.offset + offset_page_header) as u64,
                 ))
                 .expect("SEEK FAILED!!");
                 let mut buffer = vec![0u8; (self.table_count * size_cell_pointer) as usize];
                 file.read_exact(&mut buffer).expect("READ EXACT FAILED!!");
-                println!(" 1 IN A LEAF TABLE!!!");
                 //seek from the start of the page
                 let res: Vec<Vec<(String, String)>> = buffer
                     .chunks(2) // cell size
@@ -829,7 +817,6 @@ impl Page {
                             vec![(res[0].clone(), res[1].clone())]
                         }
                         PageType::LEAFTABLE => {
-                            println!("USING PARSE_ROW_DATA");
                             self.parse_row_data(
                                 offeset_cell as u64,
                                 table_name.clone(),
@@ -850,7 +837,7 @@ impl Page {
         // USE A MATCH TO CHECK THE TYPE OF THE PAGE
     }
 
-    fn search_index_country(
+    pub fn search_index_country(
         &self,
         file: &mut Arc<File>,
         (table_name, index_name): (String, String),
@@ -897,7 +884,7 @@ impl Page {
         final_response
     }
 
-    fn search_by_id(
+    pub fn search_by_id(
         &self,
         file: &mut Arc<File>,
         table_name: String,
@@ -944,7 +931,7 @@ impl Page {
                 _ => payload.clone().le(&search_key.to_string()),
             };
 
-            if dbg!(compare_keys(search_key, payload)) {
+            if compare_keys(search_key, payload) {
                 //if payload.clone().le(&search_key.to_string()) {
                 //
                 //let res = page.clone().
