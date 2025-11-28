@@ -45,11 +45,9 @@ fn get_column_data(
             );
             vec![res]
         }
-        _ =>{
-            schema_page
+        _ => schema_page
             .borrow_mut()
-            .get_table_data(&mut db.get_file(), table_name.clone())
-        } 
+            .get_table_data(&mut db.get_file(), table_name.clone()),
     };
 
     let res = columns_names[0]
@@ -79,7 +77,6 @@ fn get_column_data(
         .map(|row| row.clone())
         .collect::<Vec<_>>();
 
-    
     let filtered = Page::filter_columns(&columns_refs.as_ref(), res);
     let resp = filtered.iter().map(|c| c.join("|")).collect::<Vec<_>>();
     let out = resp.join("\n");
