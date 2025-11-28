@@ -5,9 +5,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
-use std::num::ParseIntError;
 use std::sync::Arc;
-use std::thread::panicking;
 
 const OFFSET: usize = 100;
 #[derive(Debug, Copy, Clone, Default)]
@@ -883,7 +881,7 @@ impl Page {
 
         final_response
     }
-
+    #[allow(dead_code)]
     pub fn search_by_id(
         &self,
         file: &mut Arc<File>,
@@ -911,6 +909,7 @@ impl Page {
         row
     }
 
+    #[allow(dead_code)]
     fn page_number(&self) -> usize {
         (self.offset / 4096) + 1
     }
@@ -975,7 +974,7 @@ impl Page {
                  */
 
                 for page in pages.iter() {
-                    let pr_key = page.0.split("|").collect::<Vec<_>>()[0].to_owned();
+                    let _pr_key = page.0.split("|").collect::<Vec<_>>()[0].to_owned();
 
                     for repe in page.1 {
                         let res = repe.1 .1.borrow().clone().parse_page("".into(), file);
@@ -1191,7 +1190,7 @@ impl Page {
                 let repeated_pages = page.1;
 
                 //println!("REAPEATED PAGES LENGTH: {:?}", repeated_pages.len());
-                let repeated_pages_len = page.0.len();
+                let _repeated_pages_len = page.0.len();
                 for j in repeated_pages {
                     //println!("<-----------GOING LEFT KEY|PAGENUMBER {} SEARCH KEY: {search_key}. LEN: {repeated_pages_len} ",page.0);
                     //
