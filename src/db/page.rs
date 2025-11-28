@@ -1,5 +1,5 @@
-use anyhow::bail;
 use crate::db::header::HEADER_BYTES_SIZE;
+use anyhow::bail;
 use core::panic;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -755,14 +755,12 @@ impl Page {
                 //
                 //root page
 
-
                 let offset_page_header = 12;
 
                 file.seek(std::io::SeekFrom::Start(
                     (self.offset + offset_page_header) as u64,
                 ))
                 .expect("SEEK FAILED!!");
-
 
                 let mut buffer = vec![0u8; (self.table_count * size_cell_pointer) as usize];
                 file.read_exact(&mut buffer).expect("READ EXACT FAILED!!");
@@ -775,7 +773,6 @@ impl Page {
 
                 //println!("PAGES {:?}",_res);
 
-
                 let res_ = self
                     .rows
                     .iter_mut()
@@ -785,7 +782,6 @@ impl Page {
                         //println!("table_data {:?}",data);
                     })
                     .collect::<Vec<_>>();
-
 
                 res_
             }
@@ -814,14 +810,12 @@ impl Page {
 
                             vec![(res[0].clone(), res[1].clone())]
                         }
-                        PageType::LEAFTABLE => {
-                            self.parse_row_data(
-                                offeset_cell as u64,
-                                table_name.clone(),
-                                file,
-                                false,
-                            )
-                        }
+                        PageType::LEAFTABLE => self.parse_row_data(
+                            offeset_cell as u64,
+                            table_name.clone(),
+                            file,
+                            false,
+                        ),
 
                         _ => panic!("DOES NOT APPLY!!"),
                     })
@@ -959,7 +953,7 @@ impl Page {
                     }
                     _ => match page.type_page {
                         PageType::LEAFTABLE => vec![page.clone().parse_page("".into(), file)],
-                        _ => vec![],
+                        _ => vec![page.clone().parse_page("".into(), file)],
                     },
                 };
 
@@ -972,7 +966,7 @@ impl Page {
                     .parse_page("".into(), file);
                     println!("RIGHT PAGE: {:?} ", right_page);
                  */
-
+                /*
                 for page in pages.iter() {
                     let _pr_key = page.0.split("|").collect::<Vec<_>>()[0].to_owned();
 
@@ -980,7 +974,8 @@ impl Page {
                         let res = repe.1 .1.borrow().clone().parse_page("".into(), file);
                         response.push(res);
                     }
-                }
+                } 
+                 */
 
                 let mut total_records = 0;
                 let mut final_response: Vec<Vec<(String, String)>> = vec![];
