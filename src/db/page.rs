@@ -331,7 +331,7 @@ impl Page {
         .expect("SEEK read_bytes() failed");
         file.read_exact(&mut buff)
             .expect("read_exact() from read_bytes() failed ");
-        println!("READ EXACT: BUFF read_bytes_to_utf8:: {:?}",buff);
+        println!("READ EXACT: BUFF read_bytes_to_utf8:: {:x?}",buff);
 
         let res = match buff.len() {
             1 => u8::from_be(buff[0]).to_string(),
