@@ -174,7 +174,7 @@ impl Page {
 
     fn add_page(&mut self, file: &mut Arc<File>, row_offset: u16, page_size: usize) -> () {
         let row_data = self.parse_row_data(row_offset as u64, " ".into(), file, true);
-
+        println!("add_page()::page:{:?}",row_data);
         let table_number = row_data
             .iter()
             .find(|col| col.0.eq("rootpage"))
@@ -184,7 +184,7 @@ impl Page {
             .filter(|c| c.is_ascii_digit())
             .collect::<String>();
 
-        println!("add_page()::page:{:?} TABLE_NUMBER::{:?}",row_data,table_number);
+        println!("add_page():: TABLE_NUMBER::{:?}",table_number);
         let table_number = &table_number.parse::<usize>().unwrap();
 
         let table_name = row_data
