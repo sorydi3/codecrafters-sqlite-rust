@@ -439,6 +439,7 @@ impl Page {
         let mut response: Vec<usize> = vec![];
         while !end {
             let res = self.decode_var_int(offset, file);
+            println!("RES: {:?}",res);
             response.push(res.clone().unwrap().1);
             current_bytes_reads += res.clone().unwrap().0.len();
 
