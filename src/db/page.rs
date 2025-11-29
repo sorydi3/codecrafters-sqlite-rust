@@ -426,10 +426,12 @@ impl Page {
         file.seek(std::io::SeekFrom::Start(row_offset))
             .expect("FAILED TO SEEK!!");
 
-        let mut buffer_header: Vec<u8> = vec![];
+        let mut buffer_header: Vec<u8> = vec![0;byte_array_header_size];
 
         file.read_exact(&mut buffer_header)
             .expect("failed to read!!");
+
+        println!("BUFFER HEADE: {:?}",buffer_header);
 
         let mut current_bytes_reads = 0;
         let mut end = false;
@@ -587,7 +589,7 @@ impl Page {
 
         let sizes_fields = resp
             .iter()
-            .skip(1)
+            .skip(1)// skeep the size of the header
             .map(|value| self.get_size_from_varint(*value).1)
             .collect::<Vec<_>>();
 
