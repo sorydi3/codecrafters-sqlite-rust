@@ -176,7 +176,7 @@ impl Page {
         let row_data = self.parse_row_data(row_offset as u64, " ".into(), file, true);
 
         let table_number = &row_data.iter().find(|col| col.0.eq("rootpage")).unwrap().1;
-        println!("add_page()::TABLE_NUMBER {:?}", table_number);
+        println!("PAGE: {:?} add_page()::TABLE_NUMBER {:?}",row_data,table_number);
         let table_number = &table_number.parse::<usize>().unwrap();
 
         let table_name = row_data
