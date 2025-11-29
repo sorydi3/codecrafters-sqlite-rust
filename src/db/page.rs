@@ -498,7 +498,7 @@ impl Page {
             offset_size_header_byte_array as u64,
         );
 
-        println!("VAR_INTS:: {:?}",resp);
+        println!("VAR_INTS::{:?}",resp);
 
         let sizes_fields = resp
             .iter()
