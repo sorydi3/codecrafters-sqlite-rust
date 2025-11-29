@@ -180,7 +180,7 @@ impl Page {
             .find(|col| col.0.eq("rootpage"))
             .unwrap()
             .1
-            .chars()
+            .chars().inspect(|c| println!("ABOUT TO FILTER: {:?}",c))
             .filter(|c| c.is_ascii_digit())
             .collect::<String>();
 
