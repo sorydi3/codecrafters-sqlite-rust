@@ -175,14 +175,9 @@ impl Page {
     fn add_page(&mut self, file: &mut Arc<File>, row_offset: u16, page_size: usize) -> () {
         let row_data = self.parse_row_data(row_offset as u64, " ".into(), file, true);
 
-        println!("add_page():: {:?}",row_data);
-        let table_number = &row_data
-            .iter()
-            .find(|col| col.0.eq("rootpage"))
-            .unwrap()
-            .1
-            .parse::<usize>()
-            .unwrap();
+        let table_number = &row_data.iter().find(|col| col.0.eq("rootpage")).unwrap().1;
+        println!("add_page()::TABLE_NUMBER {:?}", table_number);
+        let table_number = table_number.parse::<usize>().unwrap();
 
         let table_name = row_data
             .iter()
@@ -976,7 +971,7 @@ impl Page {
                         let res = repe.1 .1.borrow().clone().parse_page("".into(), file);
                         response.push(res);
                     }
-                } 
+                }
                  */
 
                 let mut total_records = 0;
