@@ -431,7 +431,7 @@ impl Page {
         file.read_exact(&mut buffer_header)
             .expect("failed to read!!");
 
-        println!("BUFFER HEADE: {:?}",buffer_header);
+        println!("BUFFER HEADE: {:x?}",buffer_header);
 
         let mut current_bytes_reads = 0;
         let mut end = false;
