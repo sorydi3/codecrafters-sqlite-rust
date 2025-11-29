@@ -331,6 +331,7 @@ impl Page {
         .expect("SEEK read_bytes() failed");
         file.read_exact(&mut buff)
             .expect("read_exact() from read_bytes() failed ");
+        println!("READ EXACT: BUFF read_bytes_to_utf8:: {:?}",buff);
 
         let res = match buff.len() {
             1 => u8::from_be(buff[0]).to_string(),
@@ -613,6 +614,7 @@ impl Page {
 
         let row_data: Vec<String> = sizes_fields
             .iter()
+            .inspect(|c| println!("BOAUT TO CONVERT TO UT8F8 : {:?}",c))
             .map(|size| {
                 //
                 let res = self.read_bytes_to_utf8(file, offset, *size);
