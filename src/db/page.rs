@@ -328,7 +328,7 @@ impl Page {
     fn read_bytes_to_utf8(&self, file: &mut Arc<File>, offset: usize, size: usize) -> String {
         let mut buff = vec![0; size];
         file.seek(std::io::SeekFrom::Start(offset as u64))
-            .expect("SEEK read_bytes() failed");
+        .expect("SEEK read_bytes() failed");
         file.read_exact(&mut buff)
             .expect("read_exact() from read_bytes() failed ");
 
@@ -557,6 +557,7 @@ impl Page {
         //println!("PAGE_OFFSET: {}. SELF:{:?}",page_offset,&self);
 
         let row_offset_relative_current_page = (page_offset + row_offset) as usize;
+        println!("ROW OFFSET: {:?}",row_offset_relative_current_page);
         let row_size = self.decode_var_int(row_offset_relative_current_page, file);
         let row_id_offeset = row_offset_relative_current_page + row_size.as_ref().unwrap().0.len(); // offset row id
         let row_id = self.decode_var_int(row_id_offeset, file);
