@@ -504,7 +504,7 @@ impl Page {
             .map(|value| self.get_size_from_varint(*value).1)
             .collect::<Vec<_>>();
 
-        //println!("SIZES_FIELDS: {:?}",sizes_fields);
+        println!("SIZES_FIELDS: {:?}",sizes_fields);
 
         // heady + data =  row_size
 
@@ -586,6 +586,8 @@ impl Page {
             .skip(1)
             .map(|value| self.get_size_from_varint(*value).1)
             .collect::<Vec<_>>();
+
+        println!("SIZES_FIELDS: {:?}",sizes_fields);
 
         // heady + data =  row_size
 
