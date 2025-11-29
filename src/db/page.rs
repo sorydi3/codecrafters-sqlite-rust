@@ -435,7 +435,7 @@ impl Page {
 
         let mut current_bytes_reads = 0;
         let mut end = false;
-        let mut offset: usize = (row_offset+1) as usize;
+        let mut offset: usize = (row_offset) as usize;
         let mut response: Vec<usize> = vec![];
         while !end {
             let res = self.decode_var_int(offset, file);
