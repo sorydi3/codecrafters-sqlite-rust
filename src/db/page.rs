@@ -423,7 +423,7 @@ impl Page {
         byte_array_header_size: usize,
         row_offset: u64,
     ) -> Vec<usize> {
-        file.seek(std::io::SeekFrom::Start(row_offset+1))
+        file.seek(std::io::SeekFrom::Start(row_offset))
             .expect("FAILED TO SEEK!!");
 
         let mut buffer_header: Vec<u8> = vec![0;byte_array_header_size];
@@ -435,7 +435,7 @@ impl Page {
 
         let mut current_bytes_reads = 0;
         let mut end = false;
-        let mut offset: usize = row_offset as usize;
+        let mut offset: usize = (row_offset+1) as usize;
         let mut response: Vec<usize> = vec![];
         while !end {
             let res = self.decode_var_int(offset, file);
