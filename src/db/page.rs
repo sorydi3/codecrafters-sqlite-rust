@@ -423,7 +423,7 @@ impl Page {
         byte_array_header_size: usize,
         row_offset: u64,
     ) -> Vec<usize> {
-        file.seek(std::io::SeekFrom::Start(row_offset))
+        file.seek(std::io::SeekFrom::Start(row_offset+1))
             .expect("FAILED TO SEEK!!");
 
         let mut buffer_header: Vec<u8> = vec![0;byte_array_header_size];
@@ -579,10 +579,11 @@ impl Page {
             offset_size_header_byte_array as u64,
         ))
         .expect(format!("Failed to seek to offset{row_offset:?}").as_str());
+        
         let resp = self.get_varints_byte_array(
             file,
             size_header_byte_array,
-            offset_size_header_byte_array as u64,
+            (offset_size_header_byte_array) as u64,
         );
 
         println!("VAR_INTS: {:?}",resp);
