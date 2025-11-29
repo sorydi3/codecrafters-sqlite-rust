@@ -498,7 +498,7 @@ impl Page {
             offset_size_header_byte_array as u64,
         );
 
-        println!("VAR_INTS::{:?}",resp);
+        
 
         let sizes_fields = resp
             .iter()
@@ -506,7 +506,6 @@ impl Page {
             .map(|value| self.get_size_from_varint(*value).1)
             .collect::<Vec<_>>();
 
-        println!("SIZES_FIELDS: {:?}",sizes_fields);
 
         // heady + data =  row_size
 
@@ -582,6 +581,9 @@ impl Page {
             size_header_byte_array,
             offset_size_header_byte_array as u64,
         );
+
+        println!("VAR_INTS: {:?}",resp);
+
 
         let sizes_fields = resp
             .iter()
