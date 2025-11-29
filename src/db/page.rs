@@ -557,10 +557,10 @@ impl Page {
         //println!("PAGE_OFFSET: {}. SELF:{:?}",page_offset,&self);
 
         let row_offset_relative_current_page = (page_offset + row_offset) as usize;
-        println!("ROW OFFSET: {:?}",row_offset_relative_current_page);
         let row_size = self.decode_var_int(row_offset_relative_current_page, file);
         let row_id_offeset = row_offset_relative_current_page + row_size.as_ref().unwrap().0.len(); // offset row id
         let row_id = self.decode_var_int(row_id_offeset, file);
+        println!("ROW OFFSET: {:?} ROWSIZE: {:?}. ROW:ID:{:?}",row_offset_relative_current_page,row_size,row_id);
 
         let offset_size_header_byte_array =
             row_id_offeset + row_id.as_ref().unwrap().0.iter().len();
