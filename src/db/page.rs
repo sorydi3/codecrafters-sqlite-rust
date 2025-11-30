@@ -490,13 +490,7 @@ impl Page {
         let row_offset_relative_current_page = file.stream_position().unwrap() as usize;
         let row_size = self.decode_var_int(row_offset_relative_current_page, file);
 
-        let mut aux_buffer:Vec<u8> = Vec::new();
-
-        file.read_exact(&mut aux_buffer);
-
-
-        println!("WHOLE ROW BUFFER: {:?}",aux_buffer);
-
+        
         let offset_size_header_byte_array =
             row_offset_relative_current_page + row_size.as_ref().unwrap().0.iter().len();
         let size_header_byte_array = self
@@ -572,6 +566,14 @@ impl Page {
 
         //println!("PAGE_OFFSET: {}. SELF:{:?}",page_offset,&self);
 
+        let mut aux_buffer:Vec<u8> = Vec::new();
+
+        file.read_exact(&mut aux_buffer);
+
+
+        println!("WHOLE ROW BUFFER: {:?}",aux_buffer);
+
+
         let row_offset_relative_current_page = (page_offset + row_offset) as usize;
         let row_size = self.decode_var_int(row_offset_relative_current_page, file);
         let row_id_offeset = row_offset_relative_current_page + row_size.as_ref().unwrap().0.len(); // offset row id
@@ -641,9 +643,9 @@ impl Page {
 
         //println!("ROW DATA: {:?}",row_data);
 
-        let column_names = dbg!(self.get_rows_colum_names(table_name.clone(), schema));
+        let column_names = self.get_rows_colum_names(table_name.clone(), schema);
 
-        println!("DATA_ {:?}. rowlen: {:?} colleng: {:?}",row_data,row_data.len(),column_names.len());
+        //println!("DATA_ {:?}. rowlen: {:?} colleng: {:?}",row_data,row_data.len(),column_names.len());
 
         assert!(row_data.len() == column_names.len()); // assert colum data length and colum types are equal
                                                        //println!("ROW DATA: {:?}",row_data);
