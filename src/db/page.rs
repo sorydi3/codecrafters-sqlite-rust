@@ -337,7 +337,7 @@ impl Page {
         //println!("READ EXACT: BUFF read_bytes_to_utf8:: {:x?}", buff);
 
         let res = match buff.len() {
-            1 | 3 => u8::from_be(buff[0]).to_string(),
+            1  => u8::from_be(buff[0]).to_string(),
             2 => u16::from_be_bytes([buff[0], buff[1]]).to_string(),
             _ => String::from_utf8_lossy(&buff).to_string(),
         };
