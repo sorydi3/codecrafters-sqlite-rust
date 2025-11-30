@@ -629,6 +629,8 @@ impl Page {
             })
             .collect();
 
+        println!("ROW DATA: {:?}",row_data);
+
         let column_names = self.get_rows_colum_names(table_name.clone(), schema);
 
         assert!(row_data.len() == column_names.len()); // assert colum data length and colum types are equal
