@@ -484,8 +484,19 @@ impl Page {
         _page_offset: u64,
         file: &mut Arc<File>,
     ) -> Vec<String> {
+
+
+
         let row_offset_relative_current_page = file.stream_position().unwrap() as usize;
         let row_size = self.decode_var_int(row_offset_relative_current_page, file);
+
+        let mut aux_buffer:Vec<u8> = Vec::new();
+
+        file.read_exact(&mut aux_buffer);
+
+
+        println!("WHOLE ROW BUFFER: {:?}",aux_buffer);
+
         let offset_size_header_byte_array =
             row_offset_relative_current_page + row_size.as_ref().unwrap().0.iter().len();
         let size_header_byte_array = self
