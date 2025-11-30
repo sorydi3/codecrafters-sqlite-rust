@@ -566,6 +566,8 @@ impl Page {
 
         //println!("PAGE_OFFSET: {}. SELF:{:?}",page_offset,&self);
 
+
+
         let mut aux_buffer:Vec<u8> = Vec::new();
 
         file.read_exact(&mut aux_buffer);
@@ -576,6 +578,16 @@ impl Page {
 
         let row_offset_relative_current_page = (page_offset + row_offset) as usize;
         let row_size = self.decode_var_int(row_offset_relative_current_page, file);
+        //--------------------------------------
+        file.seek(std::io::SeekFrom::Start(
+            row_offset_relative_current_page as u64,
+        ))
+        .expect(format!("Failed to seek to offset{row_offset_relative_current_page:?}").as_str());
+        let mut aux_buffer:Vec<u8> = Vec::new();
+        file.read_exact(&mut aux_buffer);
+        println!("WHOLE ROW BUFFER: {:?}",aux_buffer);
+        //--------------------------------------
+
         let row_id_offeset = row_offset_relative_current_page + row_size.as_ref().unwrap().0.len(); // offset row id
         let row_id = self.decode_var_int(row_id_offeset, file);
         //println!("ROW OFFSET: {:?} ROWSIZE: {:?}. ROW:ID:{:?}",row_offset_relative_current_page, row_size, row_id );
