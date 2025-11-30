@@ -585,7 +585,7 @@ impl Page {
         .expect(format!("Failed to seek to offset{row_offset_relative_current_page:?}").as_str());
         let mut aux_buffer:Vec<u8> = vec![0u8;row_size.as_ref().unwrap().1 as usize];
         file.read_exact(&mut aux_buffer);
-        println!("WHOLE ROW BUFFER: {:?}",aux_buffer);
+        println!("WHOLE ROW BUFFER: {:x?}",aux_buffer);
         //--------------------------------------
 
         let row_id_offeset = row_offset_relative_current_page + row_size.as_ref().unwrap().0.len(); // offset row id
