@@ -241,7 +241,7 @@ impl Page {
             }
         }
 
-        panic!("STOP!!");
+        //panic!("STOP!!");
 
         self
     }
