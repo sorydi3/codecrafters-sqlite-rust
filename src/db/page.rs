@@ -174,17 +174,18 @@ impl Page {
 
     fn add_page(&mut self, file: &mut Arc<File>, row_offset: u16, page_size: usize) -> () {
         let row_data = self.parse_row_data(row_offset as u64, " ".into(), file, true);
-        println!("add_page()::page:{:?}",row_data);
+        println!("add_page()::page:{:?}", row_data);
         let table_number = row_data
             .iter()
             .find(|col| col.0.eq("rootpage"))
             .unwrap()
             .1
-            .chars().inspect(|c| println!("ABOUT TO FILTER: {:?}",c))
+            .chars()
+            .inspect(|c| println!("ABOUT TO FILTER: {:?}", c))
             .filter(|c| c.is_ascii_digit())
             .collect::<String>();
 
-        println!("add_page():: TABLE_NUMBER::{:?}",table_number);
+        println!("add_page():: TABLE_NUMBER::{:?}", table_number);
         let table_number = &table_number.parse::<usize>().unwrap();
 
         let table_name = row_data
@@ -328,10 +329,10 @@ impl Page {
     fn read_bytes_to_utf8(&self, file: &mut Arc<File>, offset: usize, size: usize) -> String {
         let mut buff = vec![0; size];
         file.seek(std::io::SeekFrom::Start(offset as u64))
-        .expect("SEEK read_bytes() failed");
+            .expect("SEEK read_bytes() failed");
         file.read_exact(&mut buff)
             .expect("read_exact() from read_bytes() failed ");
-        println!("READ EXACT: BUFF read_bytes_to_utf8:: {:x?}",buff);
+        println!("READ EXACT: BUFF read_bytes_to_utf8:: {:x?}", buff);
 
         let res = match buff.len() {
             1 => u8::from_be(buff[0]).to_string(),
@@ -427,12 +428,12 @@ impl Page {
         file.seek(std::io::SeekFrom::Start(row_offset))
             .expect("FAILED TO SEEK!!");
 
-        let mut buffer_header: Vec<u8> = vec![0;byte_array_header_size];
+        let mut buffer_header: Vec<u8> = vec![0; byte_array_header_size];
 
         file.read_exact(&mut buffer_header)
             .expect("failed to read!!");
 
-        println!("BUFFER HEADE: {:x?}",buffer_header);
+        println!("BUFFER HEADE: {:x?}", buffer_header);
 
         let mut current_bytes_reads = 0;
         let mut end = false;
@@ -440,7 +441,7 @@ impl Page {
         let mut response: Vec<usize> = vec![];
         while !end {
             let res = self.decode_var_int(offset, file);
-            println!("RES: {:?}",res);
+            println!("RES: {:?}", res);
             response.push(res.clone().unwrap().1);
             current_bytes_reads += res.clone().unwrap().0.len();
 
@@ -502,14 +503,11 @@ impl Page {
             offset_size_header_byte_array as u64,
         );
 
-        
-
         let sizes_fields = resp
             .iter()
             .skip(1)
             .map(|value| self.get_size_from_varint(*value).1)
             .collect::<Vec<_>>();
-
 
         // heady + data =  row_size
 
@@ -565,7 +563,10 @@ impl Page {
         let row_size = self.decode_var_int(row_offset_relative_current_page, file);
         let row_id_offeset = row_offset_relative_current_page + row_size.as_ref().unwrap().0.len(); // offset row id
         let row_id = self.decode_var_int(row_id_offeset, file);
-        println!("ROW OFFSET: {:?} ROWSIZE: {:?}. ROW:ID:{:?}",row_offset_relative_current_page,row_size,row_id);
+        println!(
+            "ROW OFFSET: {:?} ROWSIZE: {:?}. ROW:ID:{:?}",
+            row_offset_relative_current_page, row_size, row_id
+        );
 
         let offset_size_header_byte_array =
             row_id_offeset + row_id.as_ref().unwrap().0.iter().len();
@@ -580,23 +581,22 @@ impl Page {
             offset_size_header_byte_array as u64,
         ))
         .expect(format!("Failed to seek to offset{row_offset:?}").as_str());
-        
+
         let resp = self.get_varints_byte_array(
             file,
             size_header_byte_array,
             (offset_size_header_byte_array) as u64,
         );
 
-        println!("VAR_INTS: {:?}",resp);
-
+        println!("VAR_INTS: {:?}", resp);
 
         let sizes_fields = resp
             .iter()
-            .skip(1)// skeep the size of the header
+            .skip(1) // skeep the size of the header
             .map(|value| self.get_size_from_varint(*value).1)
             .collect::<Vec<_>>();
 
-        println!("SIZES_FIELDS: {:?}",sizes_fields);
+        println!("SIZES_FIELDS: {:?}", sizes_fields);
 
         // heady + data =  row_size
 
@@ -614,7 +614,7 @@ impl Page {
 
         let row_data: Vec<String> = sizes_fields
             .iter()
-            .inspect(|c| println!("BOAUT TO CONVERT TO UT8F8 : {:?}",c))
+            .inspect(|c| println!("BOAUT TO CONVERT TO UT8F8 : {:?}", c))
             .map(|size| {
                 //
                 let res = self.read_bytes_to_utf8(file, offset, *size);
